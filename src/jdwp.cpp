@@ -21,15 +21,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <netinet/in.h>
-#include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include <cstdint>
-#include <cstring>
-#include <iostream>
-#include <memory>
 #include <string>
 #include <system_error>
 
@@ -248,13 +243,13 @@ JdwpCon::~JdwpCon() { }
 using std::runtime_error;
 
 JdwpException::JdwpException(const string& what_arg) :
-  runtime_error(what_arg) { };
+  runtime_error(what_arg) { }
 
 JdwpException::JdwpException(const char* what_arg) :
-  runtime_error(what_arg) { };
+  runtime_error(what_arg) { }
 
 JdwpException::JdwpException(const JdwpException& other) :
-  runtime_error(other) { };
+  runtime_error(other) { }
 
 JdwpException& JdwpException::operator=(const JdwpException& other) {
   if (this != &other) {

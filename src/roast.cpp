@@ -1,4 +1,4 @@
-/* Provides constants that are useful across the codebase
+/* Provides an entry point and CLI interactions
    Copyright 2021 Mitchell Levy
 
 This file is a part of Roastery
@@ -24,8 +24,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "jdwp.hpp"
 
-
 int main(int argc, char *argv[]) {
   auto r = roastery::JdwpCon("127.0.0.1", 3262);
   return EXIT_SUCCESS;
 }
+
