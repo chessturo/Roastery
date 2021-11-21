@@ -22,7 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <cstdlib>
 #include <iostream>
 
-#include "jdwp.hpp"
+#include "jdwp_con.hpp"
 
 int main(int argc, char *argv[]) {
   auto r = roastery::JdwpCon("127.0.0.1", 3262);
