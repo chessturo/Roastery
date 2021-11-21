@@ -17,8 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#ifndef ROASTERY_JDWP_H_
-#define ROASTERY_JDWP_H_
+#ifndef ROASTERY_JDWP_CON_H_
+#define ROASTERY_JDWP_CON_H_
 
 #include <cstdint>
 #include <map>
@@ -106,5 +106,5 @@ class JdwpException : public std::runtime_error {
 
 }  // namespace roastery
 
-#endif  // ROASTERY_JDWP_H_
+#endif  // ROASTERY_JDWP_CON_H_
 
