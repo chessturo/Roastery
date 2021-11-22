@@ -49,7 +49,7 @@ class JdwpCon {
      * @throws std::system_error if there is a system error connecting to
      * \c address on \c port.
      */
-    explicit JdwpCon(string address, uint16_t port);
+    explicit JdwpCon(const string& address, uint16_t port);
 
     // No copies/default constructor
     JdwpCon() = delete;
@@ -73,35 +73,6 @@ class JdwpCon {
   private:
     class Impl;
     unique_ptr<Impl> pImpl;
-};
-
-/**
- * Represents an exceptional state related to processing a JDWP connection.
- */
-class JdwpException : public std::runtime_error {
-  public:
-    /**
-     * Constructs a \c JdwpException with the given explanatory message.
-     */
-    JdwpException(const string& what_arg);
-    /**
-     * Constructs a \c JdwpException with the given explanatory message.
-     */
-    JdwpException(const char* what_arg);
-
-    /**
-     * Creates a copy of \c other.
-     */
-    JdwpException(const JdwpException& other);
-    /**
-     * Assigns the contents of \c this to be the contents \c other.
-     */
-    JdwpException& operator=(const JdwpException& other);
-
-    /**
-     * Returns an explanatory string.
-     */
-    virtual const char* what() const noexcept override;
 };
 
 }  // namespace roastery
