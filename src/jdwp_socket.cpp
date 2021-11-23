@@ -174,6 +174,7 @@ class JdwpSocket::Impl {
      *
      * @param len The number of bytes to read.
      *
+     * @throws roastery::JdwpException if the connection is closed.
      * @throws std::system_error if there is an error reading from the server.
      * @throws std::logic_error if the socket is not currently connected.
      *
@@ -189,9 +190,10 @@ class JdwpSocket::Impl {
       char *buf = new char[BUFSIZ + 1];
       while (bytes_read < len) {
         read_this_call = read(this->sock_fd, buf, BUFSIZ);
-        if (read_this_call < 0 && errno != EAGAIN && errno != EINTR) {
+        if (read_this_call < 0 && errno != EAGAIN && errno != EINTR)
           throw std::system_error(errno, std::generic_category());
-        }
+        if (read_this_call == 0)
+          throw roastery::JdwpException("Connection closed");
         buf[read_this_call] = '\0';
         out.append(buf);
         bytes_read += read_this_call;

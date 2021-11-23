@@ -82,7 +82,9 @@ class JdwpSocket {
      *
      * @returns The data read.
      *
-     * @throws std::system_error if there is an error reading to the socket.
+     * @throws roastery::JdwpException if the connection is closed.
+     * @throws std::system_error if there is an error reading from the socket.
+     * @throws std::logic_error if the socket is not currently connected.
      */
     std::string Read(size_t len);
   private:
