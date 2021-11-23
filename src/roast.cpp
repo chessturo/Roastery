@@ -19,12 +19,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "roast.hpp"
 
+#include <csignal>
 #include <cstdlib>
 #include <iostream>
 
 #include "jdwp_con.hpp"
 
 int main(int argc, char *argv[]) {
+  signal(SIGPIPE, SIG_IGN);
   auto r = roastery::JdwpCon("127.0.0.1", 3262);
   return EXIT_SUCCESS;
 }

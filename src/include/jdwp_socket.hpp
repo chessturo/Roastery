@@ -67,9 +67,14 @@ class JdwpSocket {
     ~JdwpSocket();
 
     /**
-     * Writes the data held by \c data to the server.
+     * Writes \c data to the connected server.
      *
-     * @throws std::system_error if there is an error writing to the socket.
+     * @param data The data to write.
+     *
+     * @throws roastery::JdwpException if the connection is closed.
+     * @throws std::system_error if there is an error writing to the server,
+     * other than a closed connection.
+     * @throws std::logic_error if this socket is not currently connected.
      */
     void Write(const std::string& data);
     /**

@@ -55,7 +55,7 @@ int Connect(const string& address, uint16_t portHost) {
 
   port_t port = htons(portHost);
 
-  int sock_fd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+  int sock_fd = socket(PF_INET6, SOCK_STREAM, IPPROTO_TCP);
   if (sock_fd == -1) {
     throw system_error(errno, generic_category(), "Could not create a socket");
   }
@@ -138,11 +138,16 @@ class JdwpSocket::Impl {
     }
 
     /**
-     * Writes \c data to the connected server.
+     * Writes \c data to the connected server. Uses \c MSG_NOSIGNAL to avoid
+     * \c SIGPIPE, but this is non-portable. \c SIGPIPE should be ignored
+     * elsewhere to ensure the program doesn't crash if a connection is closed
+     * unexpectedly.
      *
      * @param data The data to write.
      *
-     * @throws std::system_error if there is an error writing to the server.
+     * @throws roastery::JdwpException if the connection is closed.
+     * @throws std::system_error if there is an error writing to the server,
+     * other than a closed connection.
      * @throws std::logic_error if this socket is not currently connected.
      */
     void Write(const string& data) {
@@ -152,10 +157,14 @@ class JdwpSocket::Impl {
       size_t bytes_written = 0;
       ssize_t written_this_call = 0;
       while (bytes_written < data.length()) {
-        written_this_call = write(this->sock_fd, data.c_str() + bytes_written,
-            data.length() - bytes_written);
-        if (written_this_call < 0 && errno != EAGAIN && errno != EINTR)
-          throw std::system_error(errno, std::generic_category());
+        written_this_call = send(this->sock_fd, data.c_str() + bytes_written,
+            data.length() - bytes_written, MSG_NOSIGNAL);
+        if (written_this_call < 0) {
+          if (errno == EPIPE)
+            throw roastery::JdwpException("Connection closed");
+          if (errno != EAGAIN && errno != EINTR)
+            throw std::system_error(errno, std::generic_category());
+        }
 
         bytes_written += written_this_call;
       }
