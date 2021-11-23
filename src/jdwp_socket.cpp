@@ -205,5 +205,8 @@ JdwpSocket& JdwpSocket::operator=(JdwpSocket&& other) noexcept = default;
 
 JdwpSocket::~JdwpSocket() = default;
 
+void JdwpSocket::Write(const string& data) { this->pImpl->Write(data); }
+string JdwpSocket::Read(size_t len) { return this->pImpl->Read(len); }
+
 }
 
