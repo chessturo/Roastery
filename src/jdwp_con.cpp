@@ -63,7 +63,7 @@ class JdwpCon::Impl {
     Impl(Impl&& other) = delete;
     Impl& operator=(Impl&& other) = delete;
 
-    ~Impl() { }
+    ~Impl() = default;
   private:
     unique_ptr<JdwpSocket> socket;
 
