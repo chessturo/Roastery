@@ -21,9 +21,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #define ROASTERY_JDWP_CON_H_
 
 #include <cstdint>
-#include <map>
 #include <memory>
-#include <stdexcept>
 #include <string>
 
 using std::unique_ptr;

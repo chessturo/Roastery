@@ -20,13 +20,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "jdwp_socket.hpp"
 
 #include <arpa/inet.h>
-#include <bits/stdint-uintn.h>
 #include <netdb.h>
-#include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 
