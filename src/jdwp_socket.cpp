@@ -186,7 +186,7 @@ class JdwpSocket::Impl {
       size_t bytes_read = 0;
       ssize_t read_this_call = 0;
       string out = "";
-      char *buf = new char[BUFSIZ + 1];
+      char buf[BUFSIZ + 1];
       while (bytes_read < len) {
         read_this_call = read(this->sock_fd, buf, BUFSIZ);
         if (read_this_call < 0 && errno != EAGAIN && errno != EINTR)
