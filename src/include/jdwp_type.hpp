@@ -36,9 +36,6 @@ namespace commands {
 
 /**
  * Represents a JDWP command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class CommandSet : uint8_t {
   kVirtualMachine = 1,
@@ -62,9 +59,6 @@ enum class CommandSet : uint8_t {
 
 /**
  * Represents a command in the \c VirtualMachine command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class VirtualMachine : uint8_t {
   kVersion = 1,
@@ -92,9 +86,6 @@ enum class VirtualMachine : uint8_t {
 
 /**
  * Represents a command in the \c ReferenceType command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ReferenceType : uint8_t {
   kSignature = 1,
@@ -119,9 +110,6 @@ enum class ReferenceType : uint8_t {
 
 /**
  * Represents a command in the \c ClassType command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ClassType : uint8_t {
   kSuperclass = 1,
@@ -132,9 +120,6 @@ enum class ClassType : uint8_t {
 
 /**
  * Represents a command in the \c ArrayType command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ArrayType : uint8_t {
   kNewInstance = 1,
@@ -142,9 +127,6 @@ enum class ArrayType : uint8_t {
 
 /**
  * Represents a command in the \c Method command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class Method : uint8_t {
   kLineTable = 1,
@@ -156,9 +138,6 @@ enum class Method : uint8_t {
 
 /**
  * Represents a command in the \c ObjectReference command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ObjectReference : uint8_t {
   kReferenceType = 1,
@@ -174,9 +153,6 @@ enum class ObjectReference : uint8_t {
 
 /**
  * Represents a command in the \c StringReference command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class StringReference : uint8_t {
   kValue = 1,
@@ -184,9 +160,6 @@ enum class StringReference : uint8_t {
 
 /**
  * Represents a command in the \c ThreadReference command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ThreadReference : uint8_t {
   kName = 1,
@@ -207,9 +180,6 @@ enum class ThreadReference : uint8_t {
 
 /**
  * Represents a command in the \c ThreadGroupReference command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ThreadGroupReference : uint8_t {
   kName = 1,
@@ -219,9 +189,6 @@ enum class ThreadGroupReference : uint8_t {
 
 /**
  * Represents a command in the \c ArrayReference command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ArrayReference : uint8_t {
   kLength = 1,
@@ -231,9 +198,6 @@ enum class ArrayReference : uint8_t {
 
 /**
  * Represents a command in the \c ClassLoaderReference command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ClassLoaderReference : uint8_t {
   kVisibleClasses = 1,
@@ -241,9 +205,6 @@ enum class ClassLoaderReference : uint8_t {
 
 /**
  * Represents a command in the \c EventRequest command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class EventRequest : uint8_t {
   kSet = 1,
@@ -253,9 +214,6 @@ enum class EventRequest : uint8_t {
 
 /**
  * Represents a command in the \c StackFrame command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class StackFrame : uint8_t {
   kGetValues = 1,
@@ -266,9 +224,6 @@ enum class StackFrame : uint8_t {
 
 /**
  * Represents a command in the \c ClassObjectReference command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class ClassObjectReference : uint8_t {
   kReflectedType = 1,
@@ -276,9 +231,6 @@ enum class ClassObjectReference : uint8_t {
 
 /**
  * Represents a command in the \c Event command set.
- *
- * The numeric values of these constants are in host byte order, they must be
- * converted to JVM byte order before being sent/after being received.
  */
 enum class Event : uint8_t {
   kComposite = 100,
