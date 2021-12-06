@@ -26,6 +26,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 namespace roastery {
 
+// IJdwpCon Housekeeping
+IJdwpCon::~IJdwpCon() { }
+
 /**
  * Implementation of \c JdwpCon.
  */
@@ -64,6 +67,23 @@ class JdwpCon::Impl {
     Impl& operator=(Impl&& other) = delete;
 
     ~Impl() = default;
+
+    /**
+     * Returns the size of an \c objectID on the connected VM, in bytes.
+     */
+    size_t GetObjIdSize();
+    /**
+     * Returns the size of a \c methodID on the connected VM, in bytes.
+     */
+    size_t GetMethodIdSize();
+    /**
+     * Returns the size of a \c fieldID on the connected VM, in bytes.
+     */
+    size_t GetFieldIdSize();
+    /**
+     * Returns the size of a \c frameID on the connected VM, in bytes.
+     */
+    size_t GetFrameIdSize();
   private:
     unique_ptr<JdwpSocket> socket;
 
@@ -78,6 +98,11 @@ JdwpCon::JdwpCon(JdwpCon&& other) noexcept = default;
 JdwpCon& JdwpCon::operator=(JdwpCon&& other) noexcept = default;
 
 JdwpCon::~JdwpCon() = default;
+
+size_t JdwpCon::GetObjIdSize() { return this->pImpl->GetObjIdSize(); }
+size_t JdwpCon::GetMethodIdSize() { return this->pImpl->GetMethodIdSize(); }
+size_t JdwpCon::GetFieldIdSize() { return this->pImpl->GetFieldIdSize(); }
+size_t JdwpCon::GetFrameIdSize() { return this->pImpl->GetFrameIdSize(); }
 
 }  // namespace roastery
 

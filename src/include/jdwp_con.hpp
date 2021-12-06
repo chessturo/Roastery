@@ -30,9 +30,38 @@ using std::string;
 namespace roastery {
 
 /**
- * Represents a connection to a JDWP server (e.g., a JVM).
+ * An interface representing a connection to a JDWP server.
  */
-class JdwpCon {
+class IJdwpCon {
+  public:
+    /**
+     * Destroy \c this and clean up any associated resources.
+     */
+    virtual ~IJdwpCon() = 0;
+
+    // Getters for type sizes for proper serialization
+    /**
+     * Returns the size of an \c objectID, in bytes.
+     */
+    virtual size_t GetObjIdSize() = 0 ;
+    /**
+     * Returns the size of a \c methodID, in bytes.
+     */
+    virtual size_t GetMethodIdSize() = 0;
+    /**
+     * Returns the size of a \c fieldID, in bytes.
+     */
+    virtual size_t GetFieldIdSize() = 0;
+    /**
+     * Returns the size of a \c frameID, in bytes.
+     */
+    virtual size_t GetFrameIdSize() = 0;
+};
+
+/**
+ * Represents a concrete connection to a JDWP server (e.g., a JVM).
+ */
+class JdwpCon : public IJdwpCon {
   public:
     /**
      * Create a JDWP connection with \c localhost on \c port.
@@ -67,7 +96,25 @@ class JdwpCon {
     /**
      * Destroy \c this and clean up any associated resources.
      */
-    ~JdwpCon();
+    virtual ~JdwpCon() override;
+
+    // Getters for type sizes for proper serialization
+    /**
+     * Returns the size of an \c objectID on the connected VM, in bytes.
+     */
+    size_t GetObjIdSize() override;
+    /**
+     * Returns the size of a \c methodID on the connected VM, in bytes.
+     */
+    size_t GetMethodIdSize() override;
+    /**
+     * Returns the size of a \c fieldID on the connected VM, in bytes.
+     */
+    size_t GetFieldIdSize() override;
+    /**
+     * Returns the size of a \c frameID on the connected VM, in bytes.
+     */
+    size_t GetFrameIdSize() override;
   private:
     class Impl;
     unique_ptr<Impl> pImpl;

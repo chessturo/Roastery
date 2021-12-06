@@ -87,7 +87,7 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 # Phony targets
 .PHONY: all clean doc
 all: roast
-clean:
+clean: testclean
 	rm -rf $(BUILD_DIR) $(EXES)
 doc:
 	$(info Generating docs...)
@@ -123,3 +123,71 @@ $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 $(DEP_DIR):
 	@mkdir -p $(DEP_DIR)
+
+# =============================================================================
+# Testing Variables
+GTEST_BUILD_DIR ::= vendor/googletest/build
+GTEST_LIB_DIR ::= $(GTEST_BUILD_DIR)/lib
+GTEST_LIB ::= $(GTEST_LIB_DIR)/libgtest.a
+GMOCK_LIB ::= $(GTEST_LIB_DIR)/libgmock.a
+GMOCK_MAIN_LIB ::= $(GTEST_LIB_DIR)/libgmock_main.a
+GTEST ::= gtest
+GMOCK ::= gmock
+GMOCK_MAIN ::= gmock_main
+GTEST_INCLUDE ::= vendor/googletest/googletest/include/
+GMOCK_INCLUDE ::= vendor/googletest/googlemock/include/
+
+TEST_BUILD_DIR ::= $(BUILD_DIR)/test
+TEST_OBJ_DIR ::= $(TEST_BUILD_DIR)/obj
+TEST_DEP_DIR ::= $(TEST_BUILD_DIR)/dep
+
+TEST_DIR ::= test
+TEST_SRC_DIR ::= $(TEST_DIR)/src
+TEST_SRCS ::= $(wildcard $(TEST_SRC_DIR)/*.cpp)
+TEST_OBJS ::= $(foreach SRC,$(TEST_SRCS),$(TEST_OBJ_DIR)/$(notdir $(SRC:.cpp=.o)))
+TEST_DEPS ::= $(foreach SRC,$(TEST_SRCS),$(TEST_DEP_DIR)/$(notdir $(SRC:.cpp=.d)))
+
+MOCK_DIR ::= $(TEST_DIR)/mock
+
+TEST_EXE ::= $(TEST_DIR)/test-$(BUILD)
+
+DEPFLAGS.test = -MT $@ -MMD -MP -MF $(TEST_DEP_DIR)/$*.d
+CFLAGS.test ::= $(CFLAGS) -I$(GTEST_INCLUDE) -I$(GMOCK_INCLUDE) -I$(MOCK_DIR) -L$(GTEST_LIB_DIR)
+TEST_LIBS ::= -l$(GMOCK_MAIN) -l$(GMOCK) -l$(GTEST)
+
+.PHONY: test testclean
+test: $(TEST_EXE)
+	@./$(TEST_EXE)
+testclean:
+	$(info $(TEST_OBJ_DIR)/mock_jdwp_con.o)
+	$(info $(MOCK_SRC_DIR)/mock_jdwp_con.cpp)
+	rm -rf test/test-*
+	@# Uncomment for `testclean` to force a recompile of gtest
+	@#rm -rf $(GTEST_BUILD_DIR)
+
+# -----------------------------------------------------------------------------
+# Build objects
+$(TEST_EXE): $(GTEST_LIB_COMMON) $(GTEST_LIB_MAIN) $(filter-out $(OBJ_DIR)/roast.o,$(OBJS)) $(TEST_OBJS) $(MOCK_OBJS)
+	$(info Linking $(green)$@$(reset) due to $?)
+	@$(CXX) $(DEPFLAGS.test) $(CFLAGS.test) -o $@ $(filter-out $(OBJ_DIR)/roast.o,$(OBJS)) $(TEST_OBJS) $(MOCK_OBJS) $(TEST_LIBS)
+
+$(TEST_OBJ_DIR)/%.o: $(TEST_SRC_DIR)/%.cpp | $(TEST_DEP_DIR)/%.d $(TEST_OBJ_DIR) $(TEST_DEP_DIR)
+	$(info Building $(green)$@$(reset) due to $?)
+	@$(CXX) $(DEPFLAGS.test) $(CFLAGS.test) -c -o $@ $< $(TEST_LIBS)
+
+$(GTEST_LIB) $(GMOCK_LIB) $(GMOCK_MAIN_LIB):
+	$(info Building $(green)Googletest library$(reset))
+	@cd vendor/googletest && mkdir -p build && cd build && cmake .. > /dev/null && $(MAKE) > /dev/null
+
+# -----------------------------------------------------------------------------
+# Help make deal with test deps
+$(TEST_DEPS):
+-include $(TEST_DEPS)
+
+# =============================================================================
+# Order only targets for directory structure
+$(TEST_OBJ_DIR):
+	@mkdir -p $(TEST_OBJ_DIR)
+$(TEST_DEP_DIR):
+	@mkdir -p $(TEST_DEP_DIR)
+
