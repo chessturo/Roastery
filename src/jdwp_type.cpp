@@ -187,6 +187,215 @@ bool TagIsObjType(JdwpTag t) {
 
 namespace roastery {
 
+const string kNone = "No error has occurred.";
+const string kInvalidThread = "Passed thread is null, is not a valid thread "
+  "or has exited.";
+const string kInvalidThreadGroup = "Thread group invalid.";
+const string kInvalidPriority = "Invalid priority.";
+const string kThreadNotSuspended = "If the specified thread has not been "
+  "suspended by an event.";
+const string kThreadSuspended = "Thread already suspended.";
+const string kThreadNotAlive = "Thread has not been started or is now dead.";
+const string kInvalidObject = "If this reference type has been unloaded and "
+  "garbage collected.";
+const string kInvalidClass = "Invalid class.";
+const string kClassNotPrepared = "Class has been loaded but not yet prepared.";
+const string kInvalidMethodId = "Invalid method.";
+const string kInvalidLocation = "Invalid location.";
+const string kInvalidFieldId = "Invalid field.";
+const string kInvalidFrameId = "Invalid jframeID.";
+const string kNoMoreFrames = "There are no more Java or JNI frames on the "
+  "call stack.";
+const string kOpaqueFrame= "Information about the frame is not available.";
+const string kNotCurrentFrame = "Operation can only be performed on current "
+  "frame.";
+const string kTypeMismatch = "The variable is not an appropriate type for the "
+  "function used.";
+const string kInvalidSlot = "Invalid slot.";
+const string kDuplicate = "Item already set.";
+const string kNotFound = "Desired element not found.";
+const string kInvalidMonitor = "Invalid monitor.";
+const string kNotMonitorOwner = "This thread doesn't own the monitor.";
+const string kInterrupt = "The call has been interrupted before completion.";
+const string kInvalidClassFormat = "The virtual machine attempted to read a "
+  "class file and determined that the file is malformed or otherwise cannot "
+  "be interpreted as a class file.";
+const string kCircularClassDefinition = "A circularity has been detected "
+  "while initializing a class.";
+const string kFailsVerification = "The verifier detected that a class file, "
+  "though well formed, contained some sort of internal inconsistency or "
+  "security problem.";
+const string kAddMethodNotImplemented = "Adding methods has not been "
+  "implemented.";
+const string kSchemaChangeNotImplemented = "Schema change has not been "
+  "implemented.";
+const string kInvalidTypestate = "The state of the thread has been modified, "
+  "and is now inconsistent.";
+const string kHierarchyChangeNotImplemented = "A direct superclass is "
+  "different for the new class version, or the set of directly implemented "
+  "interfaces is different and canUnrestrictedlyRedefineClasses is false.";
+const string kDeleteMethodNotImplemented = "The new class version does not "
+  "declare a method declared in the old class version and "
+  "canUnrestrictedlyRedefineClasses is false.";
+const string kUnsupportedVersion = "A class file has a version number not "
+  "supported by this VM.";
+const string kNamesDontMatch = "The class name defined in the new class file "
+  "is different from the name in the old class object.";
+const string kClassModifiersChangeNotImplemented = "The new class version has "
+  "different modifiers and and canUnrestrictedlyRedefineClasses is false.";
+const string kMethodModifiersChangeNotImplemented = "A method in the new class "
+  "version has different modifiers than its counterpart in the old class "
+  "version and and canUnrestrictedlyRedefineClasses is false.";
+const string kNotImplemented = "The functionality is not implemented in this "
+  "virtual machine.";
+const string kNullPointer = "Invalid pointer.";
+const string kAbsentInformation = "Desired information is not available.";
+const string kInvalidEventType = "The specified event type id is not "
+  "recognized.";
+const string kIllegalArgument = "Illegal argument.";
+const string kOutOfMemory = "The function needed to allocate memory and no "
+  "more memory was available for allocation.";
+const string kAccessDenied = "Debugging has not been enabled in this virtual "
+  "machine. JVMTI cannot be used.";
+const string kVmDead = "The virtual machine is not running.";
+const string kInternal = "An unexpected internal error has occurred.";
+const string kUnattachedThread = "The thread being used to call this function "
+  "is not attached to the virtual machine. Calls must be made from attached "
+  "threads.";
+const string kInvalidTag = "object type id or class tag.";
+const string kAlreadyInvoking = "Previous invoke not complete.";
+const string kInvalidIndex = "Index is invalid.";
+const string kInvalidLength = "The length is invalid.";
+const string kInvalidString = "The string is invalid.";
+const string kInvalidClassLoader = "The class loader is invalid.";
+const string kInvalidArray = "The array is invalid.";
+const string kTransportLoad = "Unable to load the transport.";
+const string kTransportInit = "Unable to initialize the transport.";
+// The JDWP spec leaves this one blank
+const string kNativeMethod = "NATIVE_METHOD error.";
+const string kInvalidCount = "The count is invalid.";
+const string kDefault = "Unknown error.";
+const string& jdwp_strerror(JdwpError e) {
+  switch(e) {
+    case JdwpError::kNone:
+      return kNone;
+    case JdwpError::kInvalidThread:
+      return kInvalidThread;
+    case JdwpError::kInvalidThreadGroup:
+      return kInvalidThreadGroup;
+    case JdwpError::kInvalidPriority:
+      return kInvalidPriority;
+    case JdwpError::kThreadNotSuspended:
+      return kThreadNotSuspended;
+    case JdwpError::kThreadSuspended:
+      return kThreadSuspended;
+    case JdwpError::kThreadNotAlive:
+      return kThreadNotAlive;
+    case JdwpError::kInvalidObject:
+      return kInvalidObject;
+    case JdwpError::kInvalidClass:
+      return kInvalidClass;
+    case JdwpError::kClassNotPrepared:
+      return kClassNotPrepared;
+    case JdwpError::kInvalidMethodId:
+      return kInvalidMethodId;
+    case JdwpError::kInvalidLocation:
+      return kInvalidLocation;
+    case JdwpError::kInvalidFieldId:
+      return kInvalidFieldId;
+    case JdwpError::kInvalidFrameId:
+      return kInvalidFrameId;
+    case JdwpError::kNoMoreFrames:
+      return kNoMoreFrames;
+    case JdwpError::kOpaqueFrame:
+      return kOpaqueFrame;
+    case JdwpError::kNotCurrentFrame:
+      return kNotCurrentFrame;
+    case JdwpError::kTypeMismatch:
+      return kTypeMismatch;
+    case JdwpError::kInvalidSlot:
+      return kInvalidSlot;
+    case JdwpError::kDuplicate:
+      return kDuplicate;
+    case JdwpError::kNotFound:
+      return kNotFound;
+    case JdwpError::kInvalidMonitor:
+      return kInvalidMonitor;
+    case JdwpError::kNotMonitorOwner:
+      return kNotMonitorOwner;
+    case JdwpError::kInterrupt:
+      return kInterrupt;
+    case JdwpError::kInvalidClassFormat:
+      return kInvalidClassFormat;
+    case JdwpError::kCircularClassDefinition:
+      return kCircularClassDefinition;
+    case JdwpError::kFailsVerification:
+      return kFailsVerification;
+    case JdwpError::kAddMethodNotImplemented:
+      return kAddMethodNotImplemented;
+    case JdwpError::kSchemaChangeNotImplemented:
+      return kSchemaChangeNotImplemented;
+    case JdwpError::kInvalidTypestate:
+      return kInvalidTypestate;
+    case JdwpError::kHierarchyChangeNotImplemented:
+      return kHierarchyChangeNotImplemented;
+    case JdwpError::kDeleteMethodNotImplemented:
+      return kDeleteMethodNotImplemented;
+    case JdwpError::kUnsupportedVersion:
+      return kUnsupportedVersion;
+    case JdwpError::kNamesDontMatch:
+      return kNamesDontMatch;
+    case JdwpError::kClassModifiersChangeNotImplemented:
+      return kClassModifiersChangeNotImplemented;
+    case JdwpError::kMethodModifiersChangeNotImplemented:
+      return kMethodModifiersChangeNotImplemented;
+    case JdwpError::kNotImplemented:
+      return kNotImplemented;
+    case JdwpError::kNullPointer:
+      return kNullPointer;
+    case JdwpError::kAbsentInformation:
+      return kAbsentInformation;
+    case JdwpError::kInvalidEventType:
+      return kInvalidEventType;
+    case JdwpError::kIllegalArgument:
+      return kIllegalArgument;
+    case JdwpError::kOutOfMemory:
+      return kOutOfMemory;
+    case JdwpError::kAccessDenied:
+      return kAccessDenied;
+    case JdwpError::kVmDead:
+      return kVmDead;
+    case JdwpError::kInternal:
+      return kInternal;
+    case JdwpError::kUnattachedThread:
+      return kUnattachedThread;
+    case JdwpError::kInvalidTag:
+      return kInvalidTag;
+    case JdwpError::kAlreadyInvoking:
+      return kAlreadyInvoking;
+    case JdwpError::kInvalidIndex:
+      return kInvalidIndex;
+    case JdwpError::kInvalidLength:
+      return kInvalidLength;
+    case JdwpError::kInvalidString:
+      return kInvalidString;
+    case JdwpError::kInvalidClassLoader:
+      return kInvalidClassLoader;
+    case JdwpError::kInvalidArray:
+      return kInvalidArray;
+    case JdwpError::kTransportLoad:
+      return kTransportLoad;
+    case JdwpError::kTransportInit:
+      return kTransportInit;
+    case JdwpError::kNativeMethod:
+      return kNativeMethod;
+    case JdwpError::kInvalidCount:
+      return kInvalidCount;
+    default:
+      return kDefault;
+  }
+}
+
 JdwpTaggedObjectId::JdwpTaggedObjectId(const string& data, IJdwpCon& con) {
   const char* data_arr = data.data();
   this->tag = static_cast<JdwpTag>(data_arr[0]);

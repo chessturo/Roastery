@@ -238,6 +238,92 @@ enum class Event : uint8_t {
 
 }  // namespace commands
 
+/**
+ * An enum type for JDWP error codes. Note that these enum values are in
+ * <em>host byte-order</em>, while JDWP error codes will be in <em>network
+ * byte-order</em>.
+ *
+ * @see ntohs
+ * @see htons
+ */
+enum class JdwpError : uint16_t {
+  kNone = 0,
+
+  kInvalidThread = 10,
+  kInvalidThreadGroup = 11,
+  kInvalidPriority = 12,
+  kThreadNotSuspended = 13,
+  kThreadSuspended = 14,
+  kThreadNotAlive = 15,
+
+  kInvalidObject = 20,
+  kInvalidClass = 21,
+  kClassNotPrepared = 22,
+  kInvalidMethodId = 23,
+  kInvalidLocation = 24,
+  kInvalidFieldId = 25,
+
+  kInvalidFrameId = 30,
+  kNoMoreFrames = 31,
+  kOpaqueFrame = 32,
+  kNotCurrentFrame = 33,
+  kTypeMismatch = 34,
+  kInvalidSlot = 35,
+
+  kDuplicate = 40,
+  kNotFound = 41,
+
+  kInvalidMonitor = 50,
+  kNotMonitorOwner = 51,
+  kInterrupt = 52,
+
+  kInvalidClassFormat = 60,
+  kCircularClassDefinition = 61,
+  kFailsVerification = 62,
+  kAddMethodNotImplemented = 63,
+  kSchemaChangeNotImplemented = 64,
+  kInvalidTypestate = 65,
+  kHierarchyChangeNotImplemented = 66,
+  kDeleteMethodNotImplemented = 67,
+  kUnsupportedVersion = 68,
+  kNamesDontMatch = 69,
+  kClassModifiersChangeNotImplemented = 70,
+  kMethodModifiersChangeNotImplemented = 71,
+
+  kNotImplemented = 99,
+  kNullPointer = 100,
+  kAbsentInformation = 101,
+  kInvalidEventType = 102,
+  kIllegalArgument = 103,
+
+  kOutOfMemory = 110,
+  kAccessDenied = 111,
+  kVmDead = 112,
+  kInternal = 113,
+  kUnattachedThread = 115,
+
+  kInvalidTag = 500,
+  kAlreadyInvoking = 502,
+  kInvalidIndex = 503,
+  kInvalidLength = 504,
+  kInvalidString = 506,
+  kInvalidClassLoader = 507,
+  kInvalidArray = 508,
+  kTransportLoad = 509,
+  kTransportInit = 510,
+  kNativeMethod = 511,
+  kInvalidCount = 512,
+};
+
+/**
+ * Returns the description for the given \c JdwpError listed in the spec.
+ *
+ * @param e The error code to query.
+ *
+ * @return A string description of the error.
+ */
+const string& jdwp_strerror(JdwpError e);
+
 using std::string;
 using std::unique_ptr;
 using std::vector;
