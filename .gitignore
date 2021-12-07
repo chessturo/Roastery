@@ -7,6 +7,7 @@
 # Ignore generated files
 roast
 build/
+test/test-*
 doc/html
 compile_commands.json
 
