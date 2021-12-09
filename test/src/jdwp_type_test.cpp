@@ -181,10 +181,10 @@ TEST(TypeTest, JdwpArrayRegionObjectTest) {
   stringstream jdwp_arr_region;
   jdwp_arr_region << static_cast<char>(JdwpTag::kObject) <<
     Stringify(len_NBO) <<
-    static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO) <<
-    static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO) <<
-    static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO) <<
-    static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO);
+      static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO) <<
+      static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO) <<
+      static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO) <<
+      static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO);
 
   JdwpArrayRegion arr_region = JdwpArrayRegion(con, jdwp_arr_region.str());
 
