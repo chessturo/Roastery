@@ -17,8 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#include "gmock/gmock-actions.h"
-#include "gmock/gmock-spec-builders.h"
 #include <array>
 #include <sstream>
 #include <vector>
