@@ -68,22 +68,23 @@ class JdwpCon::Impl {
 
     ~Impl() = default;
 
+#warning Fix Get(type)IdSize to use messages once implemented
     /**
      * Returns the size of an \c objectID on the connected VM, in bytes.
      */
-    size_t GetObjIdSize();
+    size_t GetObjIdSize() { return 0; }
     /**
      * Returns the size of a \c methodID on the connected VM, in bytes.
      */
-    size_t GetMethodIdSize();
+    size_t GetMethodIdSize() { return 0; }
     /**
      * Returns the size of a \c fieldID on the connected VM, in bytes.
      */
-    size_t GetFieldIdSize();
+    size_t GetFieldIdSize() { return 0; }
     /**
      * Returns the size of a \c frameID on the connected VM, in bytes.
      */
-    size_t GetFrameIdSize();
+    size_t GetFrameIdSize() { return 0; }
   private:
     unique_ptr<JdwpSocket> socket;
 
