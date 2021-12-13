@@ -407,6 +407,10 @@ struct JdwpTaggedObjectId {
    */
   JdwpObjId obj_id;
 
+  /**
+   * Constructs a \c JdwpTaggedObjectId with uninitialized values.
+   */
+  explicit JdwpTaggedObjectId();
   /** 
    * Constructs a \c JdwpTaggedObjectId based on the given JDWP encoded
    * string.
@@ -463,6 +467,10 @@ struct JdwpLocation {
   uint64_t index;
 
   /**
+   * Constructs a \c JdwpLocation with uninitialized values.
+   */
+  JdwpLocation();
+  /**
    * Constructs a \c JdwpLocation with the specified parameter. This constructor
    * exists only as a convience for setting multiple fields simultaneously.
    */
@@ -494,15 +502,20 @@ struct JdwpString {
     string data;
 
     /**
+     * Constructs an empty \c JdwpString.
+     */
+    JdwpString();
+
+    /**
      * Creates a <code>std::unique_ptr&lt;JdwpString&gt;</code> from JDWP
      * encoded data.
      */
-    static unique_ptr<JdwpString> fromSerialized(const string& data);
+    static JdwpString fromSerialized(const string& data);
     /**
      * Creates a <code>std::unique_ptr&lt;JdwpString&gt;</code> from host byte
      * order data.
      */
-    static unique_ptr<JdwpString> fromHost(const string& data);
+    static JdwpString fromHost(const string& data);
 
     /**
      * Returns a \c string version of this \c JdwpString encoded for JDWP.
@@ -528,6 +541,10 @@ struct JdwpValue {
    */
   JdwpValUnion value;
 
+  /**
+   * Constructs a \c JdwpValue with uninitialized values.
+   */
+  JdwpValue();
   /**
    * Constructs a \c JdwpValue with the specified parameter. This constructor
    * exists only as a convience for setting multiple fields simultaneously.
@@ -582,6 +599,10 @@ struct JdwpArrayRegion {
    */
   unique_ptr<vector<unique_ptr<JdwpValue>>> values;
 
+  /**
+   * Constructs a \c JdwpArrayRegion with uninitialized values.
+   */
+  JdwpArrayRegion();
   /**
    * Constructs a \c JdwpArrayRegion with the specified parameter. This
    * constructor exists only as a convience for setting multiple fields

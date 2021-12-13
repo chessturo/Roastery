@@ -396,6 +396,8 @@ const string& jdwp_strerror(JdwpError e) {
   }
 }
 
+JdwpTaggedObjectId::JdwpTaggedObjectId() = default;
+
 JdwpTaggedObjectId::JdwpTaggedObjectId(const string& data, IJdwpCon& con) {
   const char* data_arr = data.data();
   this->tag = static_cast<JdwpTag>(data_arr[0]);
@@ -411,6 +413,8 @@ string JdwpTaggedObjectId::Serialize(IJdwpCon& con) const {
   out += SerializeObjId(this->obj_id, con);
   return out;
 }
+
+JdwpLocation::JdwpLocation() = default;
 
 JdwpLocation::JdwpLocation(JdwpTypeTag type, JdwpClassId class_id,
     JdwpMethodId method_id, uint64_t index) : type(type), class_id(class_id),
@@ -443,14 +447,16 @@ string JdwpLocation::Serialize(IJdwpCon& con) const {
   return res;
 }
 
-unique_ptr<JdwpString> JdwpString::fromSerialized(const string& data) {
+JdwpString::JdwpString() = default;
+
+JdwpString JdwpString::fromSerialized(const string& data) {
   const char* data_bytes = data.data();
   uint32_t strlen = ntohl(*reinterpret_cast<const uint32_t*>(data_bytes));
-  return unique_ptr<JdwpString>(new JdwpString(string(data_bytes + 4, strlen)));
+  return JdwpString(string(data_bytes + 4, strlen));
 }
 
-unique_ptr<JdwpString> JdwpString::fromHost(const string& data) {
-  return unique_ptr<JdwpString>(new JdwpString(data));
+JdwpString JdwpString::fromHost(const string& data) {
+  return JdwpString(data);
 }
 
 string JdwpString::Serialize() const {
@@ -462,6 +468,8 @@ string JdwpString::Serialize() const {
 }
 
 JdwpString::JdwpString(const string& data) : data(data) { }
+
+JdwpValue::JdwpValue() = default;
 
 JdwpValue::JdwpValue(JdwpTag tag, JdwpValUnion val) : tag(tag), value(val) { }
 
@@ -492,6 +500,8 @@ string JdwpValue::SerializeAsUntagged(IJdwpCon& con) const {
 
   return val;
 }
+
+JdwpArrayRegion::JdwpArrayRegion() = default;
 
 JdwpArrayRegion::JdwpArrayRegion(JdwpTag tag,
   const vector<unique_ptr<JdwpValue>>& values) :

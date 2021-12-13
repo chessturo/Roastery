@@ -123,10 +123,10 @@ TEST(TypeTest, JdwpStringTest) {
   stringstream jdwp_str;
   jdwp_str << Stringify(str_len_NBO) << kStr;
 
-  unique_ptr<JdwpString> str = JdwpString::fromSerialized(jdwp_str.str());
+  JdwpString str = JdwpString::fromSerialized(jdwp_str.str());
 
-  EXPECT_EQ(str->data, kStr);
-  EXPECT_EQ(str->Serialize(), jdwp_str.str());
+  EXPECT_EQ(str.data, kStr);
+  EXPECT_EQ(str.Serialize(), jdwp_str.str());
 }
 
 TEST(TypeTest, JdwpValueTestObject) {
