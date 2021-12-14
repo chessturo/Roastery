@@ -138,7 +138,7 @@ GTEST_INCLUDE ::= vendor/googletest/googletest/include/
 GMOCK_INCLUDE ::= vendor/googletest/googlemock/include/
 
 TEST_BUILD_DIR ::= $(BUILD_DIR)/test
-TEST_OBJ_DIR ::= $(TEST_BUILD_DIR)/obj
+TEST_OBJ_DIR ::= $(TEST_BUILD_DIR)/obj/$(BUILD)
 TEST_DEP_DIR ::= $(TEST_BUILD_DIR)/dep
 
 TEST_DIR ::= test
