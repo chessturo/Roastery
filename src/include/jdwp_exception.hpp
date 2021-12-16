@@ -17,6 +17,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+#ifndef JDWP_EXCEPTION_H_
+#define JDWP_EXCEPTION_H_
+
 #include <stdexcept>
 #include <string>
 
@@ -52,3 +55,6 @@ class JdwpException : public std::runtime_error {
 };
 
 }  // namespace roastery
+
+#endif  // JDWP_EXCEPTION_H_
+
