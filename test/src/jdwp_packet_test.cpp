@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#include "gmock/gmock-spec-builders.h"
 #include <arpa/inet.h>
 
 #include <array>

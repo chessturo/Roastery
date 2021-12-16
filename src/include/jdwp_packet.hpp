@@ -22,10 +22,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <arpa/inet.h>
 
-#include <bits/stdint-uintn.h>
 #include <cstdint>
 #include <sstream>
-#include <type_traits>
 #include <vector>
 
 #include "jdwp_con.hpp"
