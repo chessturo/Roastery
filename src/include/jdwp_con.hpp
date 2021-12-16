@@ -43,19 +43,19 @@ class IJdwpCon {
     /**
      * Returns the size of an \c objectID, in bytes.
      */
-    virtual size_t GetObjIdSize() = 0 ;
+    virtual uint8_t GetObjIdSize() = 0;
     /**
      * Returns the size of a \c methodID, in bytes.
      */
-    virtual size_t GetMethodIdSize() = 0;
+    virtual uint8_t GetMethodIdSize() = 0;
     /**
      * Returns the size of a \c fieldID, in bytes.
      */
-    virtual size_t GetFieldIdSize() = 0;
+    virtual uint8_t GetFieldIdSize() = 0;
     /**
      * Returns the size of a \c frameID, in bytes.
      */
-    virtual size_t GetFrameIdSize() = 0;
+    virtual uint8_t GetFrameIdSize() = 0;
 };
 
 /**
@@ -102,19 +102,19 @@ class JdwpCon : public IJdwpCon {
     /**
      * Returns the size of an \c objectID on the connected VM, in bytes.
      */
-    size_t GetObjIdSize() override;
+    uint8_t GetObjIdSize() override;
     /**
      * Returns the size of a \c methodID on the connected VM, in bytes.
      */
-    size_t GetMethodIdSize() override;
+    uint8_t GetMethodIdSize() override;
     /**
      * Returns the size of a \c fieldID on the connected VM, in bytes.
      */
-    size_t GetFieldIdSize() override;
+    uint8_t GetFieldIdSize() override;
     /**
      * Returns the size of a \c frameID on the connected VM, in bytes.
      */
-    size_t GetFrameIdSize() override;
+    uint8_t GetFrameIdSize() override;
   private:
     class Impl;
     unique_ptr<Impl> pImpl;

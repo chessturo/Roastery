@@ -17,6 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+#include <cstdint>
+
 #include "gmock/gmock.h"
 
 #include "jdwp_con.hpp"
@@ -27,10 +29,10 @@ namespace test {
 
 class MockJdwpCon : public IJdwpCon {
   public:
-    MOCK_METHOD(size_t, GetObjIdSize, (), (override));
-    MOCK_METHOD(size_t, GetMethodIdSize, (), (override));
-    MOCK_METHOD(size_t, GetFieldIdSize, (), (override));
-    MOCK_METHOD(size_t, GetFrameIdSize, (), (override));
+    MOCK_METHOD(uint8_t, GetObjIdSize, (), (override));
+    MOCK_METHOD(uint8_t, GetMethodIdSize, (), (override));
+    MOCK_METHOD(uint8_t, GetFieldIdSize, (), (override));
+    MOCK_METHOD(uint8_t, GetFrameIdSize, (), (override));
 };
 
 }  // namespace test

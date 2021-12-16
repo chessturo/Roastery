@@ -72,19 +72,19 @@ class JdwpCon::Impl {
     /**
      * Returns the size of an \c objectID on the connected VM, in bytes.
      */
-    size_t GetObjIdSize() { return 0; }
+    uint8_t GetObjIdSize() { return 0; }
     /**
      * Returns the size of a \c methodID on the connected VM, in bytes.
      */
-    size_t GetMethodIdSize() { return 0; }
+    uint8_t GetMethodIdSize() { return 0; }
     /**
      * Returns the size of a \c fieldID on the connected VM, in bytes.
      */
-    size_t GetFieldIdSize() { return 0; }
+    uint8_t GetFieldIdSize() { return 0; }
     /**
      * Returns the size of a \c frameID on the connected VM, in bytes.
      */
-    size_t GetFrameIdSize() { return 0; }
+    uint8_t GetFrameIdSize() { return 0; }
   private:
     unique_ptr<JdwpSocket> socket;
 
@@ -100,10 +100,10 @@ JdwpCon& JdwpCon::operator=(JdwpCon&& other) noexcept = default;
 
 JdwpCon::~JdwpCon() = default;
 
-size_t JdwpCon::GetObjIdSize() { return this->pImpl->GetObjIdSize(); }
-size_t JdwpCon::GetMethodIdSize() { return this->pImpl->GetMethodIdSize(); }
-size_t JdwpCon::GetFieldIdSize() { return this->pImpl->GetFieldIdSize(); }
-size_t JdwpCon::GetFrameIdSize() { return this->pImpl->GetFrameIdSize(); }
+uint8_t JdwpCon::GetObjIdSize() { return this->pImpl->GetObjIdSize(); }
+uint8_t JdwpCon::GetMethodIdSize() { return this->pImpl->GetMethodIdSize(); }
+uint8_t JdwpCon::GetFieldIdSize() { return this->pImpl->GetFieldIdSize(); }
+uint8_t JdwpCon::GetFrameIdSize() { return this->pImpl->GetFrameIdSize(); }
 
 }  // namespace roastery
 
