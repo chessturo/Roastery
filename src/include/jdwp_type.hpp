@@ -17,11 +17,15 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <sstream>
+#include <variant>
 #include <vector>
 
 #include "jdwp_con.hpp"
+#include "jdwp_exception.hpp"
 
 #ifndef ROASTERY_JDWP_TYPE_H_
 #define ROASTERY_JDWP_TYPE_H_
@@ -353,51 +357,266 @@ enum class JdwpTypeTag : uint8_t {
   kArray = 3,
 };
 
-typedef int8_t JdwpByte;
-/** 0 for false, non-zero for true */
-typedef int8_t JdwpBool;
-typedef uint16_t JdwpChar;
-typedef uint32_t JdwpFloat;
-typedef uint64_t JdwpDouble;
-typedef int32_t JdwpInt;
-typedef int64_t JdwpLong;
-typedef int16_t JdwpShort;
-
-typedef uint64_t JdwpObjId;
-typedef JdwpObjId JdwpThreadId;
-typedef JdwpObjId JdwpThreadGroupId;
-typedef JdwpObjId JdwpStringId;
-typedef JdwpObjId JdwpClassLoaderId;
-typedef JdwpObjId JdwpClassObjectId;
-typedef JdwpObjId JdwpArrayId;
-typedef JdwpObjId ReferenceTypeId;
-typedef ReferenceTypeId JdwpClassId;
-typedef ReferenceTypeId JdwpInterfaceId;
-typedef ReferenceTypeId JdwpArrayTypeId;
-
-typedef int64_t JdwpMethodId;
-typedef int64_t JdwpFieldId;
-typedef int64_t JdwpFrameId;
-
 /**
- * This type is a union of the JDWP primative types and \c JdwpObjId.
+ * An interface for holding JDWP fields.
  */
-typedef union {
-  JdwpObjId obj;
-  JdwpByte jbyte;
-  JdwpBool jbool;
-  JdwpShort jshort;
-  JdwpChar jchar;
-  JdwpInt jint;
-  JdwpFloat jfloat;
-  JdwpDouble jdouble;
-  JdwpLong jlong;
-} JdwpValUnion;
+struct IJdwpField {
+  public:
+    /**
+     * Populates the data of \c this with the data encoded in \c encoded.
+     */
+    void FromEncoded(const string& encoded, IJdwpCon& con);
+    /**
+     * Serializes \c this.
+     */
+    string Serialize(IJdwpCon& con) const;
+    virtual ~IJdwpField() = 0;
+  protected:
+    /**
+     * Provides the implementation for \c Serialize.
+     */
+    virtual string SerializeImpl(IJdwpCon& con) const = 0;
+    virtual void FromEncodedImpl(const string& encoded, IJdwpCon& con) = 0;
+};
+
+namespace impl {
+
+template<typename Derived, typename UnderlyingType>
+class JdwpFieldBase : public IJdwpField {
+  public:
+    static constexpr size_t value_size = sizeof(UnderlyingType);
+
+    /**
+     * Sets the value of \c this to \c v
+     */
+    Derived& operator<<(UnderlyingType v) {
+      this->value = v;
+      return dynamic_cast<Derived&>(*this);
+    }
+
+    /**
+     * Returns the underlying value
+     */
+    UnderlyingType GetValue() { return this->value; } 
+
+    virtual ~JdwpFieldBase() = 0;
+  protected:
+    /**
+     * Returns a serialization of \c value. Assumes \c value is numeric and
+     * therefore does a byte-order conversion. This method can be overriden to
+     * provide custom behavior.
+     */
+    virtual string SerializeImpl(IJdwpCon& con) const override {
+      // Ignore con, we're assuming a numeric type which is of a fixed width.
+      static_cast<void>(con);
+      
+      std::ostringstream res;
+      const unsigned char *val_bytes =
+        reinterpret_cast<const unsigned char*>(&value);
+
+#ifdef __BIG_ENDIAN__
+      for (const unsigned char* i = val_bytes;
+          i < val_bytes + value_size;
+          i++) {
+        res << *i;
+      }
+#else
+      // Loop backwards through the bytes of value to change byte order.
+      for (const unsigned char* i = val_bytes + value_size - 1;
+          i >= val_bytes;
+          i--) {
+        res << *i;
+      }
+#endif
+
+      return res.str();
+    }
+
+    /**
+     * Attemps to read a numeric value from encoded into \c value. 
+     */
+    virtual void FromEncodedImpl(const string& encoded, IJdwpCon& con)
+        override {
+      static_cast<void>(con); // Assuming numeric type, which is fixed-width
+
+      unsigned char* value_bytes = reinterpret_cast<unsigned char*>(&value);
+#ifdef __BIG_ENDIAN__
+      for (size_t i = 0; i < value_size; i++) {
+        value_byes[i] = encoded[i];
+      }
+#else
+      for (size_t i = 0; i < value_size; i++) {
+        value_bytes[i] = encoded[value_size - 1 - i];
+      }
+#endif
+    }
+
+    UnderlyingType value;
+};
+
+// Pure virtual dtor housekeeping
+template<typename Derived, typename UnderlyingType>
+JdwpFieldBase<Derived, UnderlyingType>::~JdwpFieldBase() { }
+
+template <typename Derived, typename UnderlyingType>
+class JdwpVariableSizeFieldBase :
+    public JdwpFieldBase<Derived, UnderlyingType> {
+  protected:
+    void FromEncodedImpl(const string& encoded, IJdwpCon& con) override {
+      uint8_t bytes_to_read = this->GetSize(con);
+      vector<unsigned char> bytes;
+      for (int i = 0; i < bytes_to_read; i++) {
+        bytes.push_back(encoded[i]);
+      }
+      std::reverse(bytes.begin(), bytes.end());
+      unsigned char* value_bytes =
+        reinterpret_cast<unsigned char*>(&this->value);
+      for (size_t i = 0; i < bytes.size(); i++) {
+        value_bytes[i] = bytes[i];
+      }
+    }
+
+    string SerializeImpl(IJdwpCon& con) const override {
+      uint8_t bytes_to_send = this->GetSize(con);
+      if (bytes_to_send > sizeof(UnderlyingType)) {
+        throw JdwpException("ID size too large");
+      }
+      string res;
+#if __BIG_ENDIAN__
+      res.append(reinterpret_cast<const char*>(&this->value), bytes_to_send);
+#else
+      const char* value_bytes =
+        reinterpret_cast<const char*>(&this->value);
+      for (const char* i = value_bytes + bytes_to_send - 1;
+          i >= value_bytes;
+          i--) {
+        res.append(i, 1);
+      }
+#endif
+
+      return res;
+    }
+
+    /**
+     * Returns the size of this field on the given connection.
+     */
+    virtual uint8_t GetSize(IJdwpCon& con) const = 0;
+};
+
+}  // namespace impl
+
+struct JdwpByte : impl::JdwpFieldBase<JdwpByte, uint8_t> { };
+/** 0 for false, non-zero for true */
+struct JdwpBool : impl::JdwpFieldBase<JdwpBool, uint8_t> { };
+struct JdwpChar : impl::JdwpFieldBase<JdwpChar, int16_t> { };
+struct JdwpFloat : impl::JdwpFieldBase<JdwpFloat, uint32_t> { };
+struct JdwpDouble : impl::JdwpFieldBase<JdwpDouble, uint64_t> { };
+struct JdwpInt : impl::JdwpFieldBase<JdwpInt, int32_t> { };
+struct JdwpLong : impl::JdwpFieldBase<JdwpLong, int64_t> { };
+struct JdwpShort : impl::JdwpFieldBase<JdwpShort, int16_t> { };
+
+struct JdwpObjId : impl::JdwpVariableSizeFieldBase<JdwpObjId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpThreadId : impl::JdwpVariableSizeFieldBase<JdwpThreadId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpThreadGroupId :
+    impl::JdwpVariableSizeFieldBase<JdwpThreadGroupId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpStringId :
+    impl::JdwpVariableSizeFieldBase<JdwpStringId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpClassLoaderId :
+    impl::JdwpVariableSizeFieldBase<JdwpClassLoaderId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpClassObjectId :
+    impl::JdwpVariableSizeFieldBase<JdwpClassObjectId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpArrayId :
+    impl::JdwpVariableSizeFieldBase<JdwpArrayId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpReferenceTypeId :
+    impl::JdwpVariableSizeFieldBase<JdwpReferenceTypeId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpClassId :
+    impl::JdwpVariableSizeFieldBase<JdwpClassId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpInterfaceId :
+    impl::JdwpVariableSizeFieldBase<JdwpInterfaceId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+struct JdwpArrayTypeId :
+    impl::JdwpVariableSizeFieldBase<JdwpArrayTypeId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetObjIdSize();
+    }
+};
+
+struct JdwpMethodId :
+    impl::JdwpVariableSizeFieldBase<JdwpMethodId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetMethodIdSize();
+    }
+};
+struct JdwpFieldId :
+    impl::JdwpVariableSizeFieldBase<JdwpFieldId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetFieldIdSize();
+    }
+};
+struct JdwpFrameId :
+    impl::JdwpVariableSizeFieldBase<JdwpFieldId, uint64_t> {
+  protected:
+    virtual uint8_t GetSize(IJdwpCon& con) const override {
+      return con.GetFrameIdSize();
+    }
+};
 
 /**
  * This struct represents a tagged JDWP object ID.
  */
-struct JdwpTaggedObjectId {
+struct JdwpTaggedObjectId : public IJdwpField {
   /**
    * A tag that gives the type of \c this->obj_id.
    */
@@ -408,219 +627,197 @@ struct JdwpTaggedObjectId {
   JdwpObjId obj_id;
 
   /**
-   * Constructs a \c JdwpTaggedObjectId with uninitialized values.
+   * Constructs an uninitialized \c JdwpTaggedObjectId.
    */
-  explicit JdwpTaggedObjectId();
-  /** 
-   * Constructs a \c JdwpTaggedObjectId based on the given JDWP encoded
-   * string.
-   *
-   * @param data The data to parse.
-   * @param con The connection \c data was received on; used to get needed
-   * deserialization info.
-   */
-  explicit JdwpTaggedObjectId(const string& data, IJdwpCon& con);
+  JdwpTaggedObjectId();
   /**
    * Constructs a \c JdwpTaggedObjectId based on the tag and object id given.
    * This constructor exists only as a convience for setting multiple fields
    * simultaneously.
    */
   explicit JdwpTaggedObjectId(JdwpTag tag, JdwpObjId obj_id);
-  /**
-   * Returns a version of this \c TaggedObjectId encoded for JDWP.
-   *
-   * @param con The connection being written for. 
-   */
-  string Serialize(IJdwpCon& con) const;
+  protected:
+    virtual void FromEncodedImpl(const string &encoded, IJdwpCon &con) override;
+    virtual string SerializeImpl(IJdwpCon &con) const override;
 };
 
 /**
  * Represents a JDWP Location field.
  */
-struct JdwpLocation {
-  /**
-   * Identifies whether this location is in a class or an interface.
-   */
-  JdwpTypeTag type;
-  /**
-   * Identifies which class/interface the location is in.
-   */
-  JdwpClassId class_id;
-  /**
-   * Identifies which method the location is in.
-   */
-  JdwpMethodId method_id;
-  /**
-   * The index of the location within the method.
-   *
-   * There are a few rules about how these are laid out:
-   * <ul>
-   * <li>The index of the start location for the method is less than all other
-   * locations in the method.</li>
-   * <li>The index of the end location for the method is greater than all other
-   * locations in the method.</li>
-   * <li>If a line number table exists for a method, locations that belong to a
-   * particular line must fall between the line's location index and the
-   * location index of the next line in the table
-   * </ul>
-   */
-  uint64_t index;
+struct JdwpLocation : public IJdwpField {
+  public:
+    /**
+     * Identifies whether this location is in a class or an interface.
+     */
+    JdwpTypeTag type;
+    /**
+     * Identifies which class/interface the location is in.
+     */
+    JdwpClassId class_id;
+    /**
+     * Identifies which method the location is in.
+     */
+    JdwpMethodId method_id;
+    /**
+     * The index of the location within the method.
+     *
+     * There are a few rules about how these are laid out:
+     * <ul>
+     * <li>The index of the start location for the method is less than all other
+     * locations in the method.</li>
+     * <li>The index of the end location for the method is greater than all other
+     * locations in the method.</li>
+     * <li>If a line number table exists for a method, locations that belong to a
+     * particular line must fall between the line's location index and the
+     * location index of the next line in the table
+     * </ul>
+     */
+    uint64_t index;
 
-  /**
-   * Constructs a \c JdwpLocation with uninitialized values.
-   */
-  JdwpLocation();
-  /**
-   * Constructs a \c JdwpLocation with the specified parameter. This constructor
-   * exists only as a convience for setting multiple fields simultaneously.
-   */
-  explicit JdwpLocation(JdwpTypeTag type, JdwpClassId class_id,
-      JdwpMethodId method_id, uint64_t index);
-  /**
-   * Constructs a JdwpLocation from a JDWP encoded version.
-   *
-   * @param encoded The data to decode
-   * @param con The connection the data was sent over. Used to get appropriate
-   * deserialization information.
-   */
-  explicit JdwpLocation(const string& encoded, IJdwpCon& con);
+    /**
+     * Constructs an uninitialized \c JdwpLocation.
+     */
+    JdwpLocation();
+    /**
+     * Constructs a \c JdwpLocation with the specified parameter. This constructor
+     * exists only as a convience for setting multiple fields simultaneously.
+     */
+    explicit JdwpLocation(JdwpTypeTag type, JdwpClassId class_id,
+        JdwpMethodId method_id, uint64_t index);
 
-  /**
-   * Returns a \c string version of this \c JdwpLocation encoded for JDWP.
-   * 
-   * @param con The connection the data will be sent over. Used to get
-   * appropriate serialization information.
-   */
-  string Serialize(IJdwpCon& con) const;
+  protected:
+    /**
+     * Returns a \c string version of this \c JdwpLocation encoded for JDWP.
+     * 
+     * @param con The connection the data will be sent over. Used to get
+     * appropriate serialization information.
+     */
+    virtual string SerializeImpl(IJdwpCon& con) const override;
+    virtual void FromEncodedImpl(const string& encoded, IJdwpCon& con) override;
 };
 
 /**
  * This struct represents a JDWP String \em value.
  */
-struct JdwpString {
+struct JdwpString : IJdwpField {
   public:
-    string data;
-
     /**
      * Constructs an empty \c JdwpString.
      */
     JdwpString();
-
-    /**
-     * Creates a <code>std::unique_ptr&lt;JdwpString&gt;</code> from JDWP
-     * encoded data.
-     */
-    static JdwpString fromSerialized(const string& data);
-    /**
-     * Creates a <code>std::unique_ptr&lt;JdwpString&gt;</code> from host byte
-     * order data.
-     */
-    static JdwpString fromHost(const string& data);
-
-    /**
-     * Returns a \c string version of this \c JdwpString encoded for JDWP.
-     */
-    string Serialize() const;
+    JdwpString& operator<<(const string& s);
+    string& GetValue();
+    const string& GetValue() const;
+  protected:
+    virtual void FromEncodedImpl(const string &encoded, IJdwpCon& con) override;
+    virtual string SerializeImpl(IJdwpCon& con) const override;
   private:
+    string data;
     JdwpString(const string& data);
 };
 
 /**
  * This struct represents a tagged or untagged JDWP value.
  */
-struct JdwpValue {
-  /**
-   * The type of the underlying value. Any type that maps to some subset of
-   * \c JdwpObjId maps to a \c JdwpObjId in the \c value union.
-   */
-  JdwpTag tag;
-  /**
-   * The underlying value of this \c JdwpValue. The type is given by
-   * \c this->tag. Any type that is a subset of \c JdwpObjId is stored in the
-   * union as a \c JdwpObjId.
-   */
-  JdwpValUnion value;
+struct JdwpValue : IJdwpField {
+  public:
+    /**
+     * Represents a JdwpValue with a type of void
+     */
+    struct VoidValue {
+      void FromEncoded(const string& encoded, IJdwpCon& con) {
+        static_cast<void>(encoded);
+        static_cast<void>(con);
+        throw std::logic_error("Trying to read a void value");
+      }
+      string Serialize(IJdwpCon& con) const {
+        static_cast<void>(con);
+        return "";
+      }
+    };
+    using JdwpVal = std::variant<
+      VoidValue,
+      JdwpBool,
+      JdwpByte,
+      JdwpChar,
+      JdwpFloat,
+      JdwpDouble,
+      JdwpInt,
+      JdwpLong,
+      JdwpShort,
+      JdwpObjId
+      >;
+    /**
+     * The type of the underlying value. Any type that maps to some subset of
+     * \c JdwpObjId maps to a \c JdwpObjId in the \c value union.
+     */
+    JdwpTag tag;
+    /**
+     * The underlying value of this \c JdwpValue. The type is given by
+     * \c this->tag. Any type that is a subset of \c JdwpObjId is stored in the
+     * union as a \c JdwpObjId.
+     */
+    JdwpVal value;
 
-  /**
-   * Constructs a \c JdwpValue with uninitialized values.
-   */
-  JdwpValue();
-  /**
-   * Constructs a \c JdwpValue with the specified parameter. This constructor
-   * exists only as a convience for setting multiple fields simultaneously.
-   */
-  JdwpValue(JdwpTag tag, JdwpValUnion val);
-  /**
-   * Constructs a \c JdwpValue from the JDWP encoded version. Use the overload
-   * <code>JdwpValue(JdwpTag, const string&)</code> if \c encoded is an
-   * untagged value
-   *
-   * @param con The connection \c encoded was read from. Used to get needed
-   * deserialization info.
-   * @param encoded The encoded data.
-   */
-  JdwpValue(IJdwpCon& con, const string& encoded);
-  /**
-   * Constructs a \c JdwpValue from a JDWP untagged value.
-   *
-   * @param con The connection \c encoded was read from. Used to get needed
-   * deserialization info.
-   * @param t The type of the encoded value.
-   * @param encoded The encoded data.
-   */
-  JdwpValue(IJdwpCon& con, JdwpTag t, const string& encoded);
+    /**
+     * Constructs a \c JdwpValue with uninitialized values.
+     */
+    JdwpValue();
+    /**
+     * Constructs a \c JdwpValue with the specified parameter. This constructor
+     * exists only as a convience for setting multiple fields simultaneously.
+     */
+    JdwpValue(JdwpTag tag, JdwpVal val);
+    /**
+     * Constructs a \c JdwpValue from a JDWP untagged value.
+     *
+     * @param con The connection \c encoded was read from. Used to get needed
+     * deserialization info.
+     * @param t The type of the encoded value.
+     * @param encoded The encoded data.
+     */
+    void FromEncodedAsUntagged(JdwpTag t, const string& encoded, IJdwpCon& con);
 
-  /**
-   * Returns a \c string version of this \c JdwpValue encoded for JDWP.
-   *
-   * @param con The connection the serialized value will be sent over. Used to
-   * get needed serialization info.
-   */
-  string Serialize(IJdwpCon& con) const;
-  /**
-   * Returns a \c string version of this \c JdwpValue as a JDWP untagged value.
-   *
-   * @param con The connection the serialized value will be sent over. Used to
-   * get needed serialization info.
-   */
-  string SerializeAsUntagged(IJdwpCon& con) const;
+    /**
+     * Returns a \c string version of this \c JdwpValue as a JDWP untagged
+     * value.
+     *
+     * @param con The connection the serialized value will be sent over. Used to
+     * get needed serialization info.
+     */
+    string SerializeAsUntagged(IJdwpCon& con) const;
+  protected:
+    string SerializeImpl(IJdwpCon& con) const override;
+    void FromEncodedImpl(const string& encoded, IJdwpCon& con) override;
 };
 
 /**
  * This struct represents a JDWP array region.
  */
-struct JdwpArrayRegion {
-  /**
-   * Holds the tag representing the type of values in this array region.
-   */
-  JdwpTag tag;
-  /**
-   * The underlying values in this array region.
-   */
-  unique_ptr<vector<unique_ptr<JdwpValue>>> values;
+struct JdwpArrayRegion : IJdwpField {
+  public:
+    /**
+     * Holds the tag representing the type of values in this array region.
+     */
+    JdwpTag tag;
+    /**
+     * The underlying values in this array region.
+     */
+    unique_ptr<vector<unique_ptr<JdwpValue>>> values;
 
-  /**
-   * Constructs a \c JdwpArrayRegion with uninitialized values.
-   */
-  JdwpArrayRegion();
-  /**
-   * Constructs a \c JdwpArrayRegion with the specified parameter. This
-   * constructor exists only as a convience for setting multiple fields
-   * simultaneously.
-   */
-  JdwpArrayRegion(JdwpTag tag, const vector<unique_ptr<JdwpValue>>& values);
-  /**
-   * Constructs a \c JdwpArrayRegion based off the JDWP encoded representation.
-   *
-   * @param con The connection \c encoded was recieved over.
-   * @param encoded The JDWP encoded data.
-   */
-  JdwpArrayRegion(IJdwpCon& con, const string& encoded);
-
-  /**
-   * Returns a \c string version of this \c JdwpArrayRegion encoded for JDWP.
-   */
-  string Serialize(IJdwpCon& con) const;
+    /**
+     * Constructs a \c JdwpArrayRegion with uninitialized values.
+     */
+    JdwpArrayRegion();
+    /**
+     * Constructs a \c JdwpArrayRegion with the specified parameter. This
+     * constructor exists only as a convience for setting multiple fields
+     * simultaneously.
+     */
+    JdwpArrayRegion(JdwpTag tag, const vector<unique_ptr<JdwpValue>>& values);
+  protected:
+    string SerializeImpl(IJdwpCon& con) const override;
+    void FromEncodedImpl(const string& encoded, IJdwpCon& con) override;
 };
 
 }  // namespace roastery

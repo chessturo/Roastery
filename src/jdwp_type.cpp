@@ -29,6 +29,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <string>
 
 #include "jdwp_con.hpp"
+#include "jdwp_packet.hpp"
 
 namespace {
 
@@ -65,62 +66,6 @@ uint64_t htonll(uint64_t host) {
 }
 
 /**
- * Reads a \c JdwpObjId from the JDWP encoded version.
- *
- * @param data A pointer to the first byte of the encoded object ID.
- * @param con The connection the data was received on. Used to get needed
- * deserialization info.
- */
-JdwpObjId DeserializeObjId(const char* data, IJdwpCon& con) {
-  // Zero all bytes of `res`
-  JdwpObjId res = 0;
-
-  size_t obj_id_size = con.GetObjIdSize();
-  memcpy(&res, data, obj_id_size);
-
-  res = ntohll(res);
-  return res;
-}
-
-/**
- * Reads a \c JdwpMethodId from the JDWP encoded version.
- *
- * @param data A pointer to the first byte of the encoded object ID.
- * @param con The connection the data was received on. Used to get needed
- * deserialization info.
- */
-JdwpObjId DeserializeMethodId(const char* data, IJdwpCon& con) {
-  // Zero all bytes of `res`
-  JdwpObjId res = 0;
-
-  size_t method_id_size = con.GetMethodIdSize();
-  memcpy(&res, data, method_id_size);
-
-  res = ntohll(res);
-  return res;
-}
-
-/**
- * Encodes a \c JdwpObjId for transport over the given \c JdwpCon.
- *
- * @param data The \c JdwpObjId to serialize.
- * @param con The connection the returned value will be sent over. Used to get
- * needed serialization info.
- */
-string SerializeObjId(JdwpObjId data, IJdwpCon& con) {
-  uint64_t data_network = htonll(data);
-  size_t obj_id_size = con.GetObjIdSize();
-  // If we're sending a big-endian n byte number where n < 8, we don't want to
-  // start writing from the lowest address, we want to start writing from the
-  // (8 - n)th address.
-  int byte_offset = sizeof(JdwpObjId) - obj_id_size;
-
-  return string(reinterpret_cast<char*>(&data_network) + byte_offset,
-      obj_id_size);
-
-}
-
-/**
  * Returns the size, in bytes of a JDWP entity based on the tag.
  *
  * @param t The tag whose size to get.
@@ -129,7 +74,6 @@ string SerializeObjId(JdwpObjId data, IJdwpCon& con) {
  * @return The width of the data of a given tag.
  */
 size_t GetSizeByTag(JdwpTag t, IJdwpCon& con) {
-  size_t len;
   switch(t) {
     case JdwpTag::kArray:
     case JdwpTag::kObject:
@@ -138,39 +82,31 @@ size_t GetSizeByTag(JdwpTag t, IJdwpCon& con) {
     case JdwpTag::kThreadGroup:
     case JdwpTag::kClassLoader:
     case JdwpTag::kClassObject:
-      len = con.GetObjIdSize();
-      break;
+      return con.GetObjIdSize();
     case JdwpTag::kByte:
-      len = sizeof(JdwpByte);
-      break;
+      return JdwpByte::value_size;
     case JdwpTag::kChar:
-      len = sizeof(JdwpChar);
-      break;
+      return JdwpChar::value_size;
     case JdwpTag::kFloat:
-      len = sizeof(JdwpFloat);
+      return JdwpFloat::value_size;
       break;
     case JdwpTag::kDouble:
-      len = sizeof(JdwpDouble);
+      return JdwpDouble::value_size;
       break;
     case JdwpTag::kInt:
-      len = sizeof(JdwpInt);
+      return JdwpInt::value_size;
       break;
     case JdwpTag::kLong:
-      len = sizeof(JdwpLong);
-      break;
+      return JdwpLong::value_size;
     case JdwpTag::kShort:
-      len = sizeof(JdwpShort);
-      break;
+      return JdwpShort::value_size;
     case JdwpTag::kVoid:
-      len = 0;
-      break;
+      return 0;
     case JdwpTag::kBoolean:
-      len = sizeof(JdwpBool);
-      break;
+      return JdwpBool::value_size;
     default:
       throw std::logic_error("Unknown tag");
   }
-  return len;
 }
 
 /**
@@ -396,21 +332,30 @@ const string& jdwp_strerror(JdwpError e) {
   }
 }
 
+string IJdwpField::Serialize(IJdwpCon& con) const {
+  return this->SerializeImpl(con);
+}
+void IJdwpField::FromEncoded(const string& encoded, IJdwpCon& con) {
+  this->FromEncodedImpl(encoded, con);
+}
+// pure virtual dtor housekeeping
+IJdwpField::~IJdwpField() { }
+
 JdwpTaggedObjectId::JdwpTaggedObjectId() = default;
 
-JdwpTaggedObjectId::JdwpTaggedObjectId(const string& data, IJdwpCon& con) {
+void JdwpTaggedObjectId::FromEncodedImpl(const string& data, IJdwpCon& con) {
   const char* data_arr = data.data();
   this->tag = static_cast<JdwpTag>(data_arr[0]);
 
-  this->obj_id = DeserializeObjId(&data_arr[1], con);
+  this->obj_id.FromEncoded(&data_arr[1], con);
 }
 
 JdwpTaggedObjectId::JdwpTaggedObjectId(JdwpTag tag, JdwpObjId obj_id)
     : tag(tag), obj_id(obj_id) { }
 
-string JdwpTaggedObjectId::Serialize(IJdwpCon& con) const {
+string JdwpTaggedObjectId::SerializeImpl(IJdwpCon& con) const {
   string out = { static_cast<char>(this->tag) };
-  out += SerializeObjId(this->obj_id, con);
+  out += this->obj_id.Serialize(con);
   return out;
 }
 
@@ -420,14 +365,14 @@ JdwpLocation::JdwpLocation(JdwpTypeTag type, JdwpClassId class_id,
     JdwpMethodId method_id, uint64_t index) : type(type), class_id(class_id),
     method_id(method_id), index(index) { }
 
-JdwpLocation::JdwpLocation(const string& encoded, IJdwpCon& con) {
+void JdwpLocation::FromEncodedImpl(const string& encoded, IJdwpCon& con) {
   const char* encoded_bytes = encoded.data();
   this->type = static_cast<JdwpTypeTag>(encoded_bytes[0]);
 
   size_t obj_id_size = con.GetObjIdSize();
   size_t method_id_size = con.GetMethodIdSize();
-  this->class_id = DeserializeObjId(&encoded_bytes[1], con);
-  this->method_id = DeserializeMethodId(&encoded_bytes[1 + obj_id_size], con);
+  this->class_id.FromEncoded(&encoded_bytes[1], con);
+  this->method_id.FromEncoded(&encoded_bytes[1 + obj_id_size], con);
 
   uint64_t index_network_byte_order = 
     *reinterpret_cast<const uint64_t*>(
@@ -435,10 +380,10 @@ JdwpLocation::JdwpLocation(const string& encoded, IJdwpCon& con) {
   this->index = ntohll(index_network_byte_order);
 }
 
-string JdwpLocation::Serialize(IJdwpCon& con) const {
+string JdwpLocation::SerializeImpl(IJdwpCon& con) const {
   string res = { static_cast<char>(this->type) };
-  res.append(SerializeObjId(this->class_id, con));
-  res.append(SerializeObjId(this->method_id, con));
+  res.append(this->class_id.Serialize(con));
+  res.append(this->method_id.Serialize(con));
 
   uint64_t index_network_byte_order = htonll(this->index);
   res.append(string(reinterpret_cast<char*>(&index_network_byte_order),
@@ -449,17 +394,28 @@ string JdwpLocation::Serialize(IJdwpCon& con) const {
 
 JdwpString::JdwpString() = default;
 
-JdwpString JdwpString::fromSerialized(const string& data) {
+JdwpString& JdwpString::operator<<(const string& s) {
+  this->data = s;
+  return *this;
+}
+
+string& JdwpString::GetValue() {
+  return this->data;
+}
+
+const string& JdwpString::GetValue() const {
+  return this->data;
+}
+
+void JdwpString::FromEncodedImpl(const string& data, IJdwpCon& con) {
+  static_cast<void>(con);  // non variable-width type
   const char* data_bytes = data.data();
   uint32_t strlen = ntohl(*reinterpret_cast<const uint32_t*>(data_bytes));
-  return JdwpString(string(data_bytes + 4, strlen));
+  this->data = (string(data_bytes + 4, strlen));
 }
 
-JdwpString JdwpString::fromHost(const string& data) {
-  return JdwpString(data);
-}
-
-string JdwpString::Serialize() const {
+string JdwpString::SerializeImpl(IJdwpCon& con) const {
+  static_cast<void>(con);  // non variable-width type
   uint32_t len_network_byte_order = htonl(data.length());
   string res = string(reinterpret_cast<char*>(&len_network_byte_order),
       sizeof(len_network_byte_order));
@@ -471,34 +427,67 @@ JdwpString::JdwpString(const string& data) : data(data) { }
 
 JdwpValue::JdwpValue() = default;
 
-JdwpValue::JdwpValue(JdwpTag tag, JdwpValUnion val) : tag(tag), value(val) { }
+JdwpValue::JdwpValue(JdwpTag tag, JdwpVal val) : tag(tag), value(val) { }
 
-JdwpValue::JdwpValue(IJdwpCon& con, const string& encoded) :
-    tag(static_cast<JdwpTag>(encoded[0])) {
-  size_t len = GetSizeByTag(this->tag, con);
-  string data = encoded.substr(1, len);
-  reverse(data.begin(), data.end());
-  memcpy(&this->value, data.data(), data.length());
-}
-
-JdwpValue::JdwpValue(IJdwpCon& con, JdwpTag t, const string& encoded) :
-    tag(t) {
-  string data = encoded.substr(0, GetSizeByTag(t, con));
-  reverse(data.begin(), data.end());
-  memcpy(&this->value, data.data(), data.length());
-}
-
-string JdwpValue::Serialize(IJdwpCon& con) const {
-  return static_cast<char>(tag) + this->SerializeAsUntagged(con);
+void JdwpValue::FromEncodedAsUntagged(JdwpTag t, const string& encoded,
+    IJdwpCon& con) {
+  this->tag = t;
+  if (t == JdwpTag::kVoid) {
+    // Do this case seperately because we don't want to deal with trying to read
+    // from the string
+    this->value = VoidValue();
+  } else {
+    if (TagIsObjType(t)) {
+      this->value = JdwpObjId();
+    } else {
+      switch(t) {
+        case JdwpTag::kBoolean:
+          this->value = JdwpBool();
+          break;
+        case JdwpTag::kByte:
+          this->value = JdwpByte();
+          break;
+        case JdwpTag::kChar:
+          this->value = JdwpChar();
+          break;
+        case JdwpTag::kFloat:
+          this->value = JdwpFloat();
+          break;
+        case JdwpTag::kDouble:
+          this->value = JdwpDouble();
+          break;
+        case JdwpTag::kInt:
+          this->value = JdwpInt();
+          break;
+        case JdwpTag::kLong:
+          this->value = JdwpLong();
+          break;
+        case JdwpTag::kShort:
+          this->value = JdwpShort();
+          break;
+        default:
+          throw JdwpException("Unknown Tag");
+      }
+    }
+    std::visit([&](auto&& s) { s.FromEncoded(encoded, con); }, this->value);
+  }
 }
 
 string JdwpValue::SerializeAsUntagged(IJdwpCon& con) const {
-  string val = string(reinterpret_cast<const char*>(&this->value),
-      sizeof(this->value));
-  val = val.substr(0, GetSizeByTag(this->tag, con)); 
-  reverse(val.begin(), val.end());
+  string res;
+  std::visit([&res, &con](auto&& v) {
+    res = v.Serialize(con);
+  }, this->value);
+  return res;
+}
 
-  return val;
+string JdwpValue::SerializeImpl(IJdwpCon& con) const {
+  return static_cast<char>(tag) + this->SerializeAsUntagged(con);
+}
+
+void JdwpValue::FromEncodedImpl(const string& encoded, IJdwpCon& con) {
+  this->tag = static_cast<JdwpTag>(encoded[0]);
+  this->FromEncodedAsUntagged(this->tag, encoded.substr(1), con);
 }
 
 JdwpArrayRegion::JdwpArrayRegion() = default;
@@ -515,9 +504,15 @@ JdwpArrayRegion::JdwpArrayRegion(JdwpTag tag,
   }
 }
 
-JdwpArrayRegion::JdwpArrayRegion(IJdwpCon& con, const string& encoded) : 
-    tag(static_cast<JdwpTag>(encoded[0])),
-    values(new vector<unique_ptr<JdwpValue>>()) {
+void JdwpArrayRegion::FromEncodedImpl(const string& encoded, IJdwpCon& con) {
+  tag = static_cast<JdwpTag>(encoded[0]);
+  if (!values) {
+    values = unique_ptr<vector<unique_ptr<JdwpValue>>>(
+        new vector<unique_ptr<JdwpValue>>());
+  } else {
+    values->clear();
+  }
+
   uint32_t value_count =
     ntohl(*reinterpret_cast<const uint32_t*>(encoded.data() + 1));
   size_t value_size = GetSizeByTag(this->tag, con);
@@ -530,20 +525,22 @@ JdwpArrayRegion::JdwpArrayRegion(IJdwpCon& con, const string& encoded) :
     for (size_t i = kHeaderOffset;
         i < kHeaderOffset + value_size * value_count;
         i += value_size) {
-      this->values->push_back(unique_ptr<JdwpValue>(
-           new JdwpValue(con, encoded.substr(i, i + value_size))));
+      unique_ptr<JdwpValue> val = unique_ptr<JdwpValue>(new JdwpValue());
+      val->FromEncoded(encoded.substr(i, i + value_size), con);
+      this->values->push_back(std::move(val));
     }
   } else {
     for (size_t i = kHeaderOffset;
         i < kHeaderOffset + value_size * value_count;
         i += value_size) {
-      this->values->push_back(unique_ptr<JdwpValue>(
-            new JdwpValue(con, this->tag, encoded.substr(i, value_size))));
+      unique_ptr<JdwpValue> val = unique_ptr<JdwpValue>(new JdwpValue());
+      val->FromEncodedAsUntagged(this->tag, encoded.substr(i, value_size), con);
+      this->values->push_back(std::move(val));
     }
   }
 }
 
-string JdwpArrayRegion::Serialize(IJdwpCon& con) const {
+string JdwpArrayRegion::SerializeImpl(IJdwpCon& con) const {
   std::stringstream res;
   res << static_cast<char>(this->tag);
   uint32_t len_nbo = htonl(this->values->size());

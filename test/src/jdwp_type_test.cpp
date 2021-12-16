@@ -76,6 +76,19 @@ string Stringify(const T& arr) {
 
 }  // namespace
 
+TEST(TypeTest, JdwpPrimativesTest) {
+  MockJdwpCon con;
+
+  JdwpInt i;
+  i << 0x12345678;
+
+  EXPECT_EQ(i.GetValue(), 0x12345678);
+  ExpectBytesEq(i.Serialize(con).data(),
+      array<unsigned char, 4> { 0x12, 0x34, 0x56, 0x78 });
+
+  JdwpDouble d;
+}
+
 TEST(TypeTest, JdwpTaggedObjectIdTest) {
   MockJdwpCon con;
   EXPECT_CALL(con, GetObjIdSize).WillRepeatedly(Return(kObjectIdSize));
@@ -83,10 +96,12 @@ TEST(TypeTest, JdwpTaggedObjectIdTest) {
   stringstream tagged_obj_id_data;
   tagged_obj_id_data << JdwpTag::kObject << Stringify(kObjIdNBO);
 
-  JdwpTaggedObjectId jtoi = JdwpTaggedObjectId(tagged_obj_id_data.str(), con);
+  JdwpTaggedObjectId jtoi;
+  jtoi.FromEncoded(tagged_obj_id_data.str(), con);
 
   EXPECT_EQ(JdwpTag::kObject, jtoi.tag);
-  ExpectBytesEq(&jtoi.obj_id, kObjIdHBO);
+  auto obj_id = jtoi.obj_id.GetValue();
+  ExpectBytesEq(&obj_id, kObjIdHBO);
   EXPECT_EQ(tagged_obj_id_data.str(), jtoi.Serialize(con));
 }
 
@@ -106,27 +121,34 @@ TEST(TypeTest, JdwpLocationTest) {
   loc << JdwpTypeTag::kClass << Stringify(kObjIdNBO) << Stringify(kMethodIdNBO)
     << loc_index_NBO;
 
-  JdwpLocation location = JdwpLocation(loc.str(), con);
+  JdwpLocation location;
+  location.FromEncoded(loc.str(), con);
 
   EXPECT_EQ(location.type, JdwpTypeTag::kClass);
-  ExpectBytesEq(&location.class_id, kObjIdHBO);
-  ExpectBytesEq(&location.method_id, kMethodIdHBO);
-  ExpectBytesEq(&location.index, loc_index_HBO);
+  auto class_id = location.class_id.GetValue();
+  auto method_id = location.method_id.GetValue();
+  auto index = location.index;
+  ExpectBytesEq(&class_id, kObjIdHBO);
+  ExpectBytesEq(&method_id, kMethodIdHBO);
+  ExpectBytesEq(&index, loc_index_HBO);
 
   EXPECT_EQ(loc.str(), location.Serialize(con));
 }
 
 TEST(TypeTest, JdwpStringTest) {
+  MockJdwpCon con;
+
   array<unsigned char, 4> str_len_NBO = { 0x00, 0x00, 0x00, 0x08 };
   const string kStr = "roastery";
 
   stringstream jdwp_str;
   jdwp_str << Stringify(str_len_NBO) << kStr;
 
-  JdwpString str = JdwpString::fromSerialized(jdwp_str.str());
+  JdwpString str;
+  str.FromEncoded(jdwp_str.str(), con);
 
-  EXPECT_EQ(str.data, kStr);
-  EXPECT_EQ(str.Serialize(), jdwp_str.str());
+  EXPECT_EQ(str.GetValue(), kStr);
+  EXPECT_EQ(str.Serialize(con), jdwp_str.str());
 }
 
 TEST(TypeTest, JdwpValueTestObject) {
@@ -136,10 +158,14 @@ TEST(TypeTest, JdwpValueTestObject) {
   stringstream jdwp_object;
   jdwp_object << static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO);
 
-  JdwpValue object = JdwpValue(con, jdwp_object.str());
+  JdwpValue object;
+  object.FromEncoded(jdwp_object.str(), con);
 
   EXPECT_EQ(object.tag, JdwpTag::kObject);
-  ExpectBytesEq(&object.value, kObjIdHBO);
+  uint64_t obj_id = std::get<JdwpObjId>(object.value).GetValue();
+  ExpectBytesEq(&obj_id, kObjIdHBO);
+
+  EXPECT_EQ(object.Serialize(con), jdwp_object.str());
 }
 
 TEST(TypeTest, JdwpValueTestVoid) {
@@ -148,7 +174,8 @@ TEST(TypeTest, JdwpValueTestVoid) {
   stringstream jdwp_void;
   jdwp_void << static_cast<char>(JdwpTag::kVoid);
 
-  JdwpValue vvoid = JdwpValue(con, jdwp_void.str());
+  JdwpValue vvoid;
+  vvoid.FromEncoded(jdwp_void.str(), con);
 
   EXPECT_EQ(vvoid.tag, JdwpTag::kVoid);
   EXPECT_EQ(vvoid.Serialize(con), jdwp_void.str());
@@ -163,10 +190,13 @@ TEST(TypeTest, JdwpValueTestInt) {
   stringstream jdwp_int;
   jdwp_int << JdwpTag::kInt << Stringify(int_NBO);
 
-  JdwpValue iint = JdwpValue(con, jdwp_int.str());
+  JdwpValue iint;
+  iint.FromEncoded(jdwp_int.str(), con);
 
   EXPECT_EQ(iint.tag, JdwpTag::kInt);
-  ExpectBytesEq(&iint.value, int_HBO);
+  uint32_t int_val = std::get<JdwpInt>(iint.value).GetValue();
+  ExpectBytesEq(&int_val, int_HBO);
+
   EXPECT_EQ(iint.Serialize(con), jdwp_int.str());
 }
 
@@ -184,13 +214,15 @@ TEST(TypeTest, JdwpArrayRegionObjectTest) {
       static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO) <<
       static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO);
 
-  JdwpArrayRegion arr_region = JdwpArrayRegion(con, jdwp_arr_region.str());
+  JdwpArrayRegion arr_region;
+  arr_region.FromEncoded(jdwp_arr_region.str(), con);
 
   EXPECT_EQ(arr_region.tag, JdwpTag::kObject);
   ASSERT_EQ(arr_region.values->size(), (size_t)4);
   for (const unique_ptr<JdwpValue>& v : *arr_region.values) {
     EXPECT_EQ(v->tag, JdwpTag::kObject);
-    ExpectBytesEq(&v->value, kObjIdHBO);
+    uint64_t obj_id = std::get<JdwpObjId>(v->value).GetValue();
+    ExpectBytesEq(&obj_id, kObjIdHBO);
   }
   EXPECT_EQ(arr_region.Serialize(con), jdwp_arr_region.str());
 }
@@ -207,13 +239,15 @@ TEST(TypeTest, JdwpArrayRegionPrimativeTest) {
     Stringify(len_NBO) << Stringify(int_NBO) << Stringify(int_NBO) <<
     Stringify(int_NBO) << Stringify(int_NBO);
 
-  JdwpArrayRegion arr_region = JdwpArrayRegion(con, jdwp_arr_region.str());
+  JdwpArrayRegion arr_region;
+  arr_region.FromEncoded(jdwp_arr_region.str(), con);
 
   EXPECT_EQ(arr_region.tag, JdwpTag::kInt);
   ASSERT_EQ(arr_region.values->size(), (size_t)4);
   for (const unique_ptr<JdwpValue>& v : *arr_region.values) {
     EXPECT_EQ(v->tag, JdwpTag::kInt);
-    ExpectBytesEq(&v->value, int_HBO);
+    int32_t int_val = std::get<JdwpInt>(v->value).GetValue();
+    ExpectBytesEq(&int_val, int_HBO);
   }
   EXPECT_EQ(arr_region.Serialize(con), jdwp_arr_region.str());
 }

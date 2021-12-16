@@ -30,12 +30,9 @@ using std::vector;
 using namespace roastery;
 using namespace roastery::impl;
 
-class TupleForEachTest : public ::testing::Test {
-  protected:
-    vector<string> res;
-};
 
-TEST_F(TupleForEachTest, TupleForEachEmpty) {
+TEST(UtilTest, TupleForEachEmpty) {
+  vector<string> res;
   tuple<> t = tuple();
   TupleForEach(t, [&](auto s) {
     static_cast<void>(s);
@@ -43,7 +40,8 @@ TEST_F(TupleForEachTest, TupleForEachEmpty) {
   });
 }
 
-TEST_F(TupleForEachTest, TupleForEachOneElt) {
+TEST(UtilTest, TupleForEachOneElt) {
+  vector<string> res;
   tuple<string> t = tuple<string>("test");
   TupleForEach(t, [&](auto s) {
     res.push_back(s);
@@ -51,7 +49,8 @@ TEST_F(TupleForEachTest, TupleForEachOneElt) {
   EXPECT_EQ(std::get<0>(t), res[0]);
 }
 
-TEST_F(TupleForEachTest, TupleForEachManyElt) {
+TEST(UtilTest, TupleForEachManyElt) {
+  vector<string> res;
   tuple<string, string, string> t = { "test0", "test1", "test2" };
   TupleForEach(t, [&](auto s) {
     res.push_back(s);
@@ -59,5 +58,14 @@ TEST_F(TupleForEachTest, TupleForEachManyElt) {
   EXPECT_EQ(std::get<0>(t), "test0");
   EXPECT_EQ(std::get<1>(t), "test1");
   EXPECT_EQ(std::get<2>(t), "test2");
+}
+
+TEST(UtilTest, IsVectorTest) {
+  EXPECT_TRUE(IsVector<vector<int>>::value);
+  EXPECT_TRUE(IsVector<vector<vector<int>>>::value);
+  EXPECT_TRUE(IsVector<vector<string>>::value);
+  EXPECT_FALSE(IsVector<int>::value);
+  EXPECT_FALSE(IsVector<string>::value);
+  EXPECT_FALSE(IsVector<JdwpString>::value);
 }
 
