@@ -28,14 +28,13 @@ namespace roastery {
 
 namespace impl {
 
-static uint32_t nextId = 0;
-static std::mutex nextIdLck;
+static uint32_t next_id = 0;
+static std::mutex next_id_lck;
 uint32_t GetNextId() {
+  std::lock_guard<std::mutex> lk(next_id_lck);
   uint32_t res;
-  nextIdLck.lock();
-  res = nextId;
-  nextId++;
-  nextIdLck.unlock();
+  res = next_id;
+  next_id++;
   return res;
 }
 
