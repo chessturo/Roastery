@@ -137,7 +137,7 @@ TEST(PacketTest, Vector) {
   DisposeObjectsCommand packet;
 
   MockJdwpCon con;
-  EXPECT_CALL(con, GetObjIdSize).WillRepeatedly(Return(8));
+  EXPECT_CALL(con, GetObjIdSizeImpl).WillRepeatedly(Return(8));
 
   uint32_t id = packet.GetId();
   auto& fields = packet.GetFields();
@@ -173,7 +173,7 @@ TEST(PacketTest, EventRequestSet) {
   SetCommand packet;
 
   MockJdwpCon con;
-  EXPECT_CALL(con, GetObjIdSize).WillRepeatedly(Return(8));
+  EXPECT_CALL(con, GetObjIdSizeImpl).WillRepeatedly(Return(8));
 
   uint32_t id = packet.GetId();
   auto& fields = packet.GetFields();

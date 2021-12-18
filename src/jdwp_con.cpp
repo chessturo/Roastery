@@ -80,7 +80,7 @@ class JdwpCon::Impl : public IJdwpCon {
     Impl(Impl&& other) = delete;
     Impl& operator=(Impl&& other) = delete;
 
-    ~Impl() {
+    ~Impl() override {
       this->should_cancel = true;
       if (write_thread.joinable()) {
         write_thread.join();
@@ -90,30 +90,31 @@ class JdwpCon::Impl : public IJdwpCon {
       }
     }
 
+  protected:
 #warning Fix Get(type)IdSize to use messages once implemented
     /**
      * Returns the size of an \c objectID on the connected VM, in bytes.
      */
-    uint8_t GetObjIdSize() { return 0; }
+    uint8_t GetObjIdSizeImpl() override { return 0; }
     /**
      * Returns the size of a \c methodID on the connected VM, in bytes.
      */
-    uint8_t GetMethodIdSize() { return 0; }
+    uint8_t GetMethodIdSizeImpl() override { return 0; }
     /**
      * Returns the size of a \c fieldID on the connected VM, in bytes.
      */
-    uint8_t GetFieldIdSize() { return 0; }
+    uint8_t GetFieldIdSizeImpl() override { return 0; }
     /**
      * Returns the size of a \c frameID on the connected VM, in bytes.
      */
-    uint8_t GetFrameIdSize() { return 0; }
+    uint8_t GetFrameIdSizeImpl() override { return 0; }
 
     /**
      * Queues the given message to be send to the JVM.
      * 
      * @param message The message to send.
      */
-    void SendMessage(shared_ptr<IJdwpCommandPacket> message) {
+    void SendMessageImpl(shared_ptr<IJdwpCommandPacket> message) override {
         lock_guard<mutex> l = lock_guard<mutex>(outgoing_messages_lck);
         this->outgoing_messages.push(message);
     }
@@ -164,6 +165,14 @@ class JdwpCon::Impl : public IJdwpCon {
 
 };
 
+uint8_t IJdwpCon::GetObjIdSize() { return this->GetObjIdSizeImpl(); }
+uint8_t IJdwpCon::GetMethodIdSize() { return this->GetMethodIdSizeImpl(); }
+uint8_t IJdwpCon::GetFieldIdSize() { return this->GetFieldIdSizeImpl(); }
+uint8_t IJdwpCon::GetFrameIdSize() { return this->GetFrameIdSizeImpl(); }
+void IJdwpCon::SendMessage(shared_ptr<IJdwpCommandPacket> message) {
+  this->SendMessageImpl(message);
+}
+
 JdwpCon::JdwpCon(uint16_t port) :
   pImpl(new JdwpCon::Impl(port)) { }
 JdwpCon::JdwpCon(const string& address, uint16_t port) :
@@ -174,11 +183,13 @@ JdwpCon& JdwpCon::operator=(JdwpCon&& other) noexcept = default;
 
 JdwpCon::~JdwpCon() = default;
 
-uint8_t JdwpCon::GetObjIdSize() { return this->pImpl->GetObjIdSize(); }
-uint8_t JdwpCon::GetMethodIdSize() { return this->pImpl->GetMethodIdSize(); }
-uint8_t JdwpCon::GetFieldIdSize() { return this->pImpl->GetFieldIdSize(); }
-uint8_t JdwpCon::GetFrameIdSize() { return this->pImpl->GetFrameIdSize(); }
-void JdwpCon::SendMessage(shared_ptr<IJdwpCommandPacket> p) {
+uint8_t JdwpCon::GetObjIdSizeImpl() { return this->pImpl->GetObjIdSize(); }
+uint8_t JdwpCon::GetMethodIdSizeImpl() {
+  return this->pImpl->GetMethodIdSize();
+}
+uint8_t JdwpCon::GetFieldIdSizeImpl() { return this->pImpl->GetFieldIdSize(); }
+uint8_t JdwpCon::GetFrameIdSizeImpl() { return this->pImpl->GetFrameIdSize(); }
+void JdwpCon::SendMessageImpl(shared_ptr<IJdwpCommandPacket> p) {
   return this->pImpl->SendMessage(p);
 }
 

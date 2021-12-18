@@ -30,11 +30,11 @@ namespace test {
 
 class MockJdwpCon : public IJdwpCon {
   public:
-    MOCK_METHOD(uint8_t, GetObjIdSize, (), (override));
-    MOCK_METHOD(uint8_t, GetMethodIdSize, (), (override));
-    MOCK_METHOD(uint8_t, GetFieldIdSize, (), (override));
-    MOCK_METHOD(uint8_t, GetFrameIdSize, (), (override));
-    MOCK_METHOD(void, SendMessage, (shared_ptr<IJdwpCommandPacket>),
+    MOCK_METHOD(uint8_t, GetObjIdSizeImpl, (), (override));
+    MOCK_METHOD(uint8_t, GetMethodIdSizeImpl, (), (override));
+    MOCK_METHOD(uint8_t, GetFieldIdSizeImpl, (), (override));
+    MOCK_METHOD(uint8_t, GetFrameIdSizeImpl, (), (override));
+    MOCK_METHOD(void, SendMessageImpl, (shared_ptr<IJdwpCommandPacket>),
         (override));
 };
 

@@ -91,7 +91,7 @@ TEST(TypeTest, JdwpPrimativesTest) {
 
 TEST(TypeTest, JdwpTaggedObjectIdTest) {
   MockJdwpCon con;
-  EXPECT_CALL(con, GetObjIdSize).WillRepeatedly(Return(kObjectIdSize));
+  EXPECT_CALL(con, GetObjIdSizeImpl).WillRepeatedly(Return(kObjectIdSize));
 
   stringstream tagged_obj_id_data;
   tagged_obj_id_data << JdwpTag::kObject << Stringify(kObjIdNBO);
@@ -114,8 +114,8 @@ TEST(TypeTest, JdwpLocationTest) {
   reverse(loc_index_NBO.begin(), loc_index_NBO.end());
 
   MockJdwpCon con;
-  EXPECT_CALL(con, GetObjIdSize).WillRepeatedly(Return(kObjectIdSize));
-  EXPECT_CALL(con, GetMethodIdSize).WillRepeatedly(Return(kMethodIdSize));
+  EXPECT_CALL(con, GetObjIdSizeImpl).WillRepeatedly(Return(kObjectIdSize));
+  EXPECT_CALL(con, GetMethodIdSizeImpl).WillRepeatedly(Return(kMethodIdSize));
 
   stringstream loc;
   loc << JdwpTypeTag::kClass << Stringify(kObjIdNBO) << Stringify(kMethodIdNBO)
@@ -153,7 +153,7 @@ TEST(TypeTest, JdwpStringTest) {
 
 TEST(TypeTest, JdwpValueTestObject) {
   MockJdwpCon con;
-  EXPECT_CALL(con, GetObjIdSize).WillRepeatedly(Return(kObjectIdSize));
+  EXPECT_CALL(con, GetObjIdSizeImpl).WillRepeatedly(Return(kObjectIdSize));
 
   stringstream jdwp_object;
   jdwp_object << static_cast<char>(JdwpTag::kObject) << Stringify(kObjIdNBO);
@@ -204,7 +204,7 @@ TEST(TypeTest, JdwpArrayRegionObjectTest) {
   array<unsigned char, 4> len_NBO = { 0x00, 0x00, 0x00, 0x04 };
 
   MockJdwpCon con;
-  EXPECT_CALL(con, GetObjIdSize).WillRepeatedly(Return(kObjectIdSize));
+  EXPECT_CALL(con, GetObjIdSizeImpl).WillRepeatedly(Return(kObjectIdSize));
 
   stringstream jdwp_arr_region;
   jdwp_arr_region << static_cast<char>(JdwpTag::kObject) <<

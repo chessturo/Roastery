@@ -46,26 +46,50 @@ class IJdwpCon {
     /**
      * Returns the size of an \c objectID, in bytes.
      */
-    virtual uint8_t GetObjIdSize() = 0;
+    uint8_t GetObjIdSize();
     /**
      * Returns the size of a \c methodID, in bytes.
      */
-    virtual uint8_t GetMethodIdSize() = 0;
+    uint8_t GetMethodIdSize();
     /**
      * Returns the size of a \c fieldID, in bytes.
      */
-    virtual uint8_t GetFieldIdSize() = 0;
+    uint8_t GetFieldIdSize();
     /**
      * Returns the size of a \c frameID, in bytes.
      */
-    virtual uint8_t GetFrameIdSize() = 0;
+    uint8_t GetFrameIdSize();
 
     /**
      * Queues the given message to be send to the JVM.
      * 
      * @param message The message to send.
      */
-    virtual void SendMessage(shared_ptr<IJdwpCommandPacket> message) = 0;
+    void SendMessage(shared_ptr<IJdwpCommandPacket> message);
+  protected:
+    /**
+     * Returns the size of an \c objectID, in bytes.
+     */
+    virtual uint8_t GetObjIdSizeImpl() = 0;
+    /**
+     * Returns the size of a \c methodID, in bytes.
+     */
+    virtual uint8_t GetMethodIdSizeImpl() = 0;
+    /**
+     * Returns the size of a \c fieldID, in bytes.
+     */
+    virtual uint8_t GetFieldIdSizeImpl() = 0;
+    /**
+     * Returns the size of a \c frameID, in bytes.
+     */
+    virtual uint8_t GetFrameIdSizeImpl() = 0;
+
+    /**
+     * Queues the given message to be send to the JVM.
+     * 
+     * @param message The message to send.
+     */
+    virtual void SendMessageImpl(shared_ptr<IJdwpCommandPacket> message) = 0;
 };
 
 /**
@@ -108,30 +132,31 @@ class JdwpCon : public IJdwpCon {
      */
     virtual ~JdwpCon() override;
 
+  protected:
     // Getters for type sizes for proper serialization
     /**
      * Returns the size of an \c objectID on the connected VM, in bytes.
      */
-    uint8_t GetObjIdSize() override;
+    uint8_t GetObjIdSizeImpl() override;
     /**
      * Returns the size of a \c methodID on the connected VM, in bytes.
      */
-    uint8_t GetMethodIdSize() override;
+    uint8_t GetMethodIdSizeImpl() override;
     /**
      * Returns the size of a \c fieldID on the connected VM, in bytes.
      */
-    uint8_t GetFieldIdSize() override;
+    uint8_t GetFieldIdSizeImpl() override;
     /**
      * Returns the size of a \c frameID on the connected VM, in bytes.
      */
-    uint8_t GetFrameIdSize() override;
+    uint8_t GetFrameIdSizeImpl() override;
 
     /**
      * Queues the given message to be send to the JVM.
      * 
      * @param message The message to send.
      */
-    virtual void SendMessage(shared_ptr<IJdwpCommandPacket> message) override;
+    void SendMessageImpl(shared_ptr<IJdwpCommandPacket> message) override;
   private:
     class Impl;
     unique_ptr<Impl> pImpl;
