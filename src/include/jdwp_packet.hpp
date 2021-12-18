@@ -169,7 +169,7 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
      */
     virtual string SerializeImpl(IJdwpCon& con) const {
       std::stringstream body_acc;
-      TupleForEach(this->fields, [&body_acc, &con](auto& s) {
+      TupleForEach(this->fields, [&body_acc, &con](const auto& s) {
         RecursiveSerialize(body_acc, s, con);
       });
       string body = body_acc.str();
@@ -183,7 +183,7 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
      * Otherwise, just serializes the element.
      */
     template <typename Field>
-    static void RecursiveSerialize(std::stringstream& acc, Field field,
+    static void RecursiveSerialize(std::stringstream& acc, const Field& field,
         IJdwpCon& con) {
       if (IsVector<Field>::value) {
         RecursiveSerialize(acc, field, con);
@@ -193,13 +193,13 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
     }
 
     template<typename Field>
-    static void RecursiveSerialize(std::stringstream& acc, vector<Field> v,
-        IJdwpCon& con) {
+    static void RecursiveSerialize(std::stringstream& acc,
+        const vector<Field>& v, IJdwpCon& con) {
       JdwpInt len;
       len << v.size();
       acc << len.Serialize(con);
-      for (auto& bundle : v) {
-        TupleForEach(bundle, [&acc, &con](auto s) {
+      for (const Field& bundle : v) {
+        TupleForEach(bundle, [&acc, &con](const auto& s) {
           RecursiveSerialize(acc, s, con);
         });
       }
