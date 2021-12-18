@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "gmock/gmock.h"
 
 #include "jdwp_con.hpp"
+#include "jdwp_packet.hpp"
 
 namespace roastery {
 
@@ -33,6 +34,8 @@ class MockJdwpCon : public IJdwpCon {
     MOCK_METHOD(uint8_t, GetMethodIdSize, (), (override));
     MOCK_METHOD(uint8_t, GetFieldIdSize, (), (override));
     MOCK_METHOD(uint8_t, GetFrameIdSize, (), (override));
+    MOCK_METHOD(void, SendMessage, (shared_ptr<IJdwpCommandPacket>),
+        (override));
 };
 
 }  // namespace test

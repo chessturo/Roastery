@@ -24,10 +24,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <memory>
 #include <string>
 
+using std::shared_ptr;
 using std::unique_ptr;
 using std::string;
 
 namespace roastery {
+
+class IJdwpCommandPacket;
 
 /**
  * An interface representing a connection to a JDWP server.
@@ -56,6 +59,13 @@ class IJdwpCon {
      * Returns the size of a \c frameID, in bytes.
      */
     virtual uint8_t GetFrameIdSize() = 0;
+
+    /**
+     * Queues the given message to be send to the JVM.
+     * 
+     * @param message The message to send.
+     */
+    virtual void SendMessage(shared_ptr<IJdwpCommandPacket> message) = 0;
 };
 
 /**
@@ -115,6 +125,13 @@ class JdwpCon : public IJdwpCon {
      * Returns the size of a \c frameID on the connected VM, in bytes.
      */
     uint8_t GetFrameIdSize() override;
+
+    /**
+     * Queues the given message to be send to the JVM.
+     * 
+     * @param message The message to send.
+     */
+    virtual void SendMessage(shared_ptr<IJdwpCommandPacket> message) override;
   private:
     class Impl;
     unique_ptr<Impl> pImpl;

@@ -20,11 +20,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "jdwp_socket.hpp"
 
 #include <arpa/inet.h>
+#include <fstream>
 #include <netdb.h>
+#include <poll.h>
+#include <sys/poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include <cstdint>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -102,10 +106,14 @@ int Connect(const string& address, uint16_t portHost) {
 
 }  // namespace
 
+using std::mutex;
+using std::lock_guard;
+
 namespace roastery {
 
 /**
- * Implementation of \c JdwpSocket.
+ * Implementation of \c JdwpSocket. \c Read and \c Write are thread-safe, and
+ * can be used simultaneously by multiple threads.
  */
 class JdwpSocket::Impl {
   public:
@@ -142,6 +150,9 @@ class JdwpSocket::Impl {
      * elsewhere to ensure the program doesn't crash if a connection is closed
      * unexpectedly.
      *
+     * This method is thread-safe, it can be invoked concurrently by multiple
+     * callers.
+     *
      * @param data The data to write.
      *
      * @throws roastery::JdwpException if the connection is closed.
@@ -155,21 +166,58 @@ class JdwpSocket::Impl {
 
       size_t bytes_written = 0;
       ssize_t written_this_call = 0;
-      while (bytes_written < data.length()) {
-        written_this_call = send(this->sock_fd, data.c_str() + bytes_written,
-            data.length() - bytes_written, MSG_NOSIGNAL);
-        if (written_this_call < 0) {
-          if (errno == EPIPE)
-            throw roastery::JdwpException("Connection closed");
-          if (errno != EAGAIN && errno != EINTR)
-            throw std::system_error(errno, std::generic_category());
-        }
+      {  // critical segment, acquire lock_guard
+        lock_guard<mutex> lck =  lock_guard(write_lock);
+        while (bytes_written < data.length()) {
+          written_this_call = send(this->sock_fd, data.c_str() + bytes_written,
+              data.length() - bytes_written, MSG_NOSIGNAL);
+          if (written_this_call < 0) {
+            if (errno == EPIPE) {
+              this->Close();
+              throw roastery::JdwpException("Connection closed");
+            }
+            if (errno != EAGAIN && errno != EINTR)
+              throw std::system_error(errno, std::generic_category());
+          }
 
-        bytes_written += written_this_call;
+          bytes_written += written_this_call;
+        }
       }
     }
+
+    /**
+     * Returns whether or not there is data available to be read on this socket.
+     *
+     * @throws std::system_error if there is an issue polling the file
+     * descriptor.
+     * @throws std::logic_error if the socket is not currently connected.
+     */
+    bool CanRead() {
+      if (this->sock_fd < 0)
+        throw std::logic_error("Cannot poll while not connected");
+
+      struct pollfd query = {
+        .fd = this->sock_fd,
+        .events = POLLIN,
+        .revents = 0,
+      };
+
+      int res = poll(&query, 1, 0);
+      if (res < 0 || query.revents & POLLERR) {
+        throw std::system_error(errno, std::generic_category());
+      }
+
+      return query.revents & POLLIN;
+    }
+
     /**
      * Reads \c len bytes from the server and returns it as a \c string.
+     *
+     * This method is thread-safe, it can be invoked concurrently by multiple
+     * callers. This method will block until \c len bytes of data have been
+     * read, the connection closes, or there is an IO error. This means that
+     * if many bytes of data are requested, the call may block until the VM
+     * writes a large amount of data.
      *
      * @param len The number of bytes to read.
      *
@@ -187,21 +235,36 @@ class JdwpSocket::Impl {
       ssize_t read_this_call = 0;
       string out = "";
       char buf[BUFSIZ + 1];
-      while (bytes_read < len) {
-        read_this_call = read(this->sock_fd, buf, BUFSIZ);
-        if (read_this_call < 0 && errno != EAGAIN && errno != EINTR)
-          throw std::system_error(errno, std::generic_category());
-        if (read_this_call == 0)
-          throw roastery::JdwpException("Connection closed");
-        buf[read_this_call] = '\0';
-        out.append(buf);
-        bytes_read += read_this_call;
+      {  // critical segment, acquire lock_guard
+        lock_guard<mutex> lck =  lock_guard(read_lock);
+        while (bytes_read < len) {
+          read_this_call = read(this->sock_fd, buf,
+              std::min(static_cast<size_t>(BUFSIZ), len - bytes_read));
+          if (read_this_call < 0 && errno != EAGAIN && errno != EINTR)
+            throw std::system_error(errno, std::generic_category());
+          if (read_this_call == 0) {
+            this->Close();
+            throw roastery::JdwpException("Connection closed");
+          }
+          out.append(buf, read_this_call);
+          bytes_read += read_this_call;
+        }
       }
 
       return out;
     }
+  protected:
+    /**
+     * Closes the socket associated with \c this.
+     */
+    void Close() {
+      close(this->sock_fd);
+      this->sock_fd = -1;
+    }
 
   private:
+    mutable mutex read_lock;
+    mutable mutex write_lock;
     const string kJdwpHandshake = "JDWP-Handshake";
     int sock_fd;
 };
@@ -216,6 +279,7 @@ JdwpSocket& JdwpSocket::operator=(JdwpSocket&& other) noexcept = default;
 JdwpSocket::~JdwpSocket() = default;
 
 void JdwpSocket::Write(const string& data) { this->pImpl->Write(data); }
+bool JdwpSocket::CanRead() { return this->pImpl->CanRead(); }
 string JdwpSocket::Read(size_t len) { return this->pImpl->Read(len); }
 
 }

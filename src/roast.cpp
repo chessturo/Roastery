@@ -22,12 +22,22 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
+#include <thread>
 
 #include "jdwp_con.hpp"
+#include "jdwp_packet.hpp"
+
+using namespace roastery;
 
 int main(int argc, char *argv[]) {
   signal(SIGPIPE, SIG_IGN);
-  auto r = roastery::JdwpCon("127.0.0.1", 3262);
+  auto r = JdwpCon("127.0.0.1", 3262);
+  shared_ptr<IJdwpCommandPacket> version_cmd =
+    shared_ptr<IJdwpCommandPacket>(
+        new command_packets::virtual_machine::VersionCommand());
+  r.SendMessage(version_cmd);
+  std::cout << "Press enter to exit" << std::endl;
+  std::cin.get();
   return EXIT_SUCCESS;
 }
 

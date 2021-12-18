@@ -82,6 +82,14 @@ class JdwpSocket {
      */
     void Write(const std::string& data);
     /**
+     * Returns whether or not there is data available to be read on this socket.
+     *
+     * @throws std::system_error if there is an issue polling the file
+     * descriptor.
+     * @throws std::logic_error if the socket is not currently connected.
+     */
+    bool CanRead();
+    /**
      * Reads \c len bytes from the server and returns it as a string.
      *
      * @returns The data read.
