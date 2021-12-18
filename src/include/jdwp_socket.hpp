@@ -36,6 +36,8 @@ class JdwpSocket {
      *
      * @throws std::system_error if there is a system error creating a
      * connection to \c port.
+     * @throws JdwpException if there is an issue establishing a JDWP connection
+     * on top of the TCP connection.
      */
     explicit JdwpSocket(uint16_t port);
     /**
@@ -43,6 +45,8 @@ class JdwpSocket {
      *
      * @throws std::system_error if there is a system error connecting to
      * \c address on \c port.
+     * @throws JdwpException if there is an issue establishing a JDWP connection
+     * on top of the TCP connection.
      */
     explicit JdwpSocket(const std::string& address, uint16_t port);
     
