@@ -167,7 +167,8 @@ testclean:
 
 # -----------------------------------------------------------------------------
 # Build objects
-$(TEST_EXE): $(GTEST_LIB_COMMON) $(GTEST_LIB_MAIN) $(filter-out $(OBJ_DIR)/roast.o,$(OBJS)) $(TEST_OBJS) $(MOCK_OBJS)
+$(TEST_EXE): $(GTEST_LIB) $(GTEST_MAIN_LIB) $(GMOCK_LIB) $(filter-out $(OBJ_DIR)/roast.o,$(OBJS)) $(TEST_OBJS) $(MOCK_OBJS)
+	$(info $(GTEST_LIB))
 	$(info Linking $(green)$@$(reset) due to $?)
 	@$(CXX) $(DEPFLAGS.test) $(CFLAGS.test) -o $@ $(filter-out $(OBJ_DIR)/roast.o,$(OBJS)) $(TEST_OBJS) $(MOCK_OBJS) $(TEST_LIBS)
 
