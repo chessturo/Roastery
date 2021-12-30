@@ -1,6 +1,7 @@
 # Ignore vim files
 .vimrc
 .vim/
+_vimrc_local.vim
 .*.sw*
 *~
 
