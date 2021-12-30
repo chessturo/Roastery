@@ -167,7 +167,7 @@ class JdwpSocket::Impl {
       size_t bytes_written = 0;
       ssize_t written_this_call = 0;
       {  // critical segment, acquire lock_guard
-        lock_guard<mutex> lck =  lock_guard(write_lock);
+        lock_guard<mutex> lck(write_lock);
         while (bytes_written < data.length()) {
           written_this_call = send(this->sock_fd, data.c_str() + bytes_written,
               data.length() - bytes_written, MSG_NOSIGNAL);
@@ -236,7 +236,7 @@ class JdwpSocket::Impl {
       string out = "";
       char buf[BUFSIZ + 1];
       {  // critical segment, acquire lock_guard
-        lock_guard<mutex> lck =  lock_guard(read_lock);
+        lock_guard<mutex> lck(read_lock);
         while (bytes_read < len) {
           read_this_call = read(this->sock_fd, buf,
               std::min(static_cast<size_t>(BUFSIZ), len - bytes_read));

@@ -118,12 +118,12 @@ string array_reference::SetValuesCommand::SerializeImpl(IJdwpCon& con) const {
 
 event_request::SetCommand::SetCommand() : IJdwpCommandPacket() { }
 
-event_request::SetCommand::Fields& event_request::SetCommand::GetFields() { 
+event_request::SetCommand::Fields& event_request::SetCommand::GetFields() {
   return this->fields;
 }
 
 const event_request::SetCommand::Fields& event_request::SetCommand::
-    GetFields() const { 
+    GetFields() const {
   return this->fields;
 }
 
@@ -155,6 +155,119 @@ string event_request::SetCommand::SerializeImpl(IJdwpCon& con) const {
       body.length(),
       this->id) +
     body;
+}
+
+bool HeaderIsEvent(const string& header) {
+  return
+    // Header is not a reply
+    !(header[8] & 0x80) &&
+    // Header is in the event command-set
+    header[9] == static_cast<uint8_t>(CommandSet::kEvent);
+}
+
+IJdwpEvent::~IJdwpEvent() = default;
+
+vector<unique_ptr<IJdwpEvent>> IJdwpEvent::FromComposite(const string& encoded,
+    IJdwpCon& con) {
+  if (!HeaderIsEvent(encoded))
+    throw JdwpException("Cannot parse non-event packet as a composite event");
+
+  size_t idx = impl::kHeaderLen;
+  // ignore suspend policy for now
+  idx += JdwpByte::value_size;
+
+  JdwpInt event_cnt;
+  event_cnt.FromEncoded(encoded.substr(idx, JdwpInt::value_size), con);
+  idx += JdwpInt::value_size;
+
+  auto res = vector<unique_ptr<IJdwpEvent>>();
+  for (int i = 0; i < event_cnt.GetValue(); i++) {
+    using namespace roastery::events;
+
+    JdwpByte event_kind;
+    event_kind.FromEncoded(encoded.substr(idx, JdwpByte::value_size), con);
+
+    unique_ptr<IJdwpEvent> ev;
+    switch(static_cast<JdwpEventKind>(event_kind.GetValue())) {
+      case JdwpEventKind::kVmStart:
+          ev = unique_ptr<VmStart>(new VmStart());
+          break;
+      case JdwpEventKind::kSingleStep:
+          ev = unique_ptr<SingleStep>(new SingleStep());
+          break;
+      case JdwpEventKind::kBreakpoint:
+          ev = unique_ptr<Breakpoint>(new Breakpoint());
+          break;
+      case JdwpEventKind::kMethodEntry:
+          ev = unique_ptr<MethodEntry>(new MethodEntry());
+          break;
+      case JdwpEventKind::kMethodExit:
+          ev = unique_ptr<MethodExit>(new MethodExit());
+          break;
+      case JdwpEventKind::kMethodExitWithReturnValue:
+          ev = unique_ptr<MethodExitWithReturnValue>(
+              new MethodExitWithReturnValue());
+          break;
+      case JdwpEventKind::kMonitorContendedEnter:
+          ev = unique_ptr<MonitorContendedEnter>(new MonitorContendedEnter());
+          break;
+      case JdwpEventKind::kMonitorContendedEntered:
+          ev = unique_ptr<MonitorContendedEntered>(
+              new MonitorContendedEntered());
+          break;
+      case JdwpEventKind::kMonitorWait:
+          ev = unique_ptr<MonitorWait>(new MonitorWait());
+          break;
+      case JdwpEventKind::kMonitorWaited:
+          ev = unique_ptr<MonitorWaited>(new MonitorWaited());
+          break;
+      case JdwpEventKind::kException:
+          ev = unique_ptr<Exception>(new Exception());
+          break;
+      case JdwpEventKind::kThreadStart:
+          ev = unique_ptr<ThreadStart>(new ThreadStart());
+          break;
+      case JdwpEventKind::kThreadDeath:
+          ev = unique_ptr<ThreadDeath>(new ThreadDeath());
+          break;
+      case JdwpEventKind::kClassPrepare:
+          ev = unique_ptr<ClassPrepare>(new ClassPrepare());
+          break;
+      case JdwpEventKind::kClassUnload:
+          ev = unique_ptr<ClassUnload>(new ClassUnload());
+          break;
+      case JdwpEventKind::kFieldAccess:
+          ev = unique_ptr<FieldAccess>(new FieldAccess());
+          break;
+      case JdwpEventKind::kFieldModification:
+          ev = unique_ptr<FieldModification>(new FieldModification());
+          break;
+      case JdwpEventKind::kVmDeath:
+          ev = unique_ptr<VmDeath>(new VmDeath());
+          break;
+      default:
+          throw JdwpException("Illegal eventKind in composite event");
+    }
+
+    idx += ev->FromEncoded(encoded.substr(idx), con);
+    res.emplace_back(move(ev));
+  }
+
+  return res;
+}
+
+JdwpEventKind IJdwpEvent::GetKind() const { return this->GetKindImpl(); }
+
+size_t IJdwpEvent::FromEncoded(const string& encoded, IJdwpCon& con) {
+  JdwpByte event_kind; event_kind.FromEncoded(encoded, con);
+  if (static_cast<JdwpEventKind>(event_kind.GetValue()) != this->GetKind())
+    throw JdwpException("Wrong IJdwpEvent instance for event");
+
+  return 1 + this->FromEncodedImpl(encoded.substr(1), con);
+}
+
+void IJdwpEvent::Dispatch(Handler& handler) {
+  this->DispatchImpl(handler);
 }
 
 }  // namespace roastery

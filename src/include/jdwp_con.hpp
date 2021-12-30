@@ -24,13 +24,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <memory>
 #include <string>
 
-using std::shared_ptr;
 using std::unique_ptr;
 using std::string;
 
 namespace roastery {
 
 class IJdwpCommandPacket;
+class Handler;
 
 /**
  * An interface representing a connection to a JDWP server.
@@ -61,11 +61,17 @@ class IJdwpCon {
     uint8_t GetFrameIdSize();
 
     /**
+     * Registers the given \c handler, which will have the appropriate \c Handle
+     * function invoked when an event packet is recieved.
+     */
+    void RegisterEventHandler(unique_ptr<Handler> handler);
+
+    /**
      * Queues the given message to be send to the JVM.
-     * 
+     *
      * @param message The message to send.
      */
-    void SendMessage(shared_ptr<IJdwpCommandPacket> message);
+    void SendMessage(unique_ptr<IJdwpCommandPacket> message);
   protected:
     /**
      * Returns the size of an \c objectID, in bytes.
@@ -85,11 +91,17 @@ class IJdwpCon {
     virtual uint8_t GetFrameIdSizeImpl() = 0;
 
     /**
+     * Registers the given \c handler, which will have the appropriate \c Handle
+     * function invoked when an event packet is recieved.
+     */
+    virtual void RegisterEventHandlerImpl(unique_ptr<Handler> handler) = 0;
+
+    /**
      * Queues the given message to be send to the JVM.
-     * 
+     *
      * @param message The message to send.
      */
-    virtual void SendMessageImpl(shared_ptr<IJdwpCommandPacket> message) = 0;
+    virtual void SendMessageImpl(unique_ptr<IJdwpCommandPacket> message) = 0;
 };
 
 /**
@@ -152,11 +164,17 @@ class JdwpCon : public IJdwpCon {
     uint8_t GetFrameIdSizeImpl() override;
 
     /**
+     * Registers the given \c handler, which will have the appropriate \c Handle
+     * function invoked when an event packet is recieved.
+     */
+    void RegisterEventHandlerImpl(unique_ptr<Handler> handler) override;
+
+    /**
      * Queues the given message to be send to the JVM.
-     * 
+     *
      * @param message The message to send.
      */
-    void SendMessageImpl(shared_ptr<IJdwpCommandPacket> message) override;
+    void SendMessageImpl(unique_ptr<IJdwpCommandPacket> message) override;
   private:
     class Impl;
     unique_ptr<Impl> pImpl;

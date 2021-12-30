@@ -22,6 +22,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <thread>
 
 #include "jdwp_con.hpp"
@@ -29,13 +30,21 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using namespace roastery;
 
+class PrintHandler : public Handler {
+  public:
+    using Handler::Handle;
+    void Handle(IJdwpEvent& event) override {
+      std::cout << "Event kind: " << std::hex <<
+        static_cast<uint8_t>(event.GetKind()) << std::endl;
+    }
+};
+
 int main(int argc, char *argv[]) {
   signal(SIGPIPE, SIG_IGN);
   auto r = JdwpCon("127.0.0.1", 3262);
-  shared_ptr<IJdwpCommandPacket> version_cmd =
-    shared_ptr<IJdwpCommandPacket>(
-        new command_packets::virtual_machine::VersionCommand());
-  r.SendMessage(version_cmd);
+  r.RegisterEventHandler(std::make_unique<PrintHandler>());
+  r.SendMessage(
+      std::make_unique<command_packets::virtual_machine::VersionCommand>());
   std::cout << "Press enter to exit" << std::endl;
   std::cin.get();
   return EXIT_SUCCESS;

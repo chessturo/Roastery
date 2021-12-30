@@ -357,6 +357,31 @@ enum class JdwpTypeTag : uint8_t {
   kArray = 3,
 };
 
+enum class JdwpEventKind : uint8_t {
+  kSingleStep = 1,
+  kBreakpoint = 2,
+  kFramePop = 3,
+  kException = 4,
+  kUserDefined = 5,
+  kThreadStart = 6,
+  kThreadDeath = 7,
+  kClassPrepare = 8,
+  kClassUnload = 9,
+  kClassLoad = 10,
+  kFieldAccess = 20,
+  kFieldModification = 21,
+  kExceptionCatch = 30,
+  kMethodEntry = 40,
+  kMethodExit = 41,
+  kMethodExitWithReturnValue = 42,
+  kMonitorContendedEnter = 43,
+  kMonitorContendedEntered = 44,
+  kMonitorWait = 45,
+  kMonitorWaited = 46,
+  kVmStart = 90,
+  kVmDeath = 99,
+};
+
 /**
  * An interface for holding JDWP fields.
  */
@@ -364,8 +389,10 @@ struct IJdwpField {
   public:
     /**
      * Populates the data of \c this with the data encoded in \c encoded.
+     *
+     * @return The number of bytes read from \c encoded.
      */
-    void FromEncoded(const string& encoded, IJdwpCon& con);
+    size_t FromEncoded(const string& encoded, IJdwpCon& con);
     /**
      * Serializes \c this.
      */
@@ -376,7 +403,7 @@ struct IJdwpField {
      * Provides the implementation for \c Serialize.
      */
     virtual string SerializeImpl(IJdwpCon& con) const = 0;
-    virtual void FromEncodedImpl(const string& encoded, IJdwpCon& con) = 0;
+    virtual size_t FromEncodedImpl(const string& encoded, IJdwpCon& con) = 0;
 };
 
 namespace impl {
@@ -397,7 +424,7 @@ class JdwpFieldBase : public IJdwpField {
     /**
      * Returns the underlying value
      */
-    UnderlyingType GetValue() { return this->value; } 
+    UnderlyingType GetValue() { return this->value; }
 
     virtual ~JdwpFieldBase() = 0;
   protected:
@@ -409,7 +436,7 @@ class JdwpFieldBase : public IJdwpField {
     virtual string SerializeImpl(IJdwpCon& con) const override {
       // Ignore con, we're assuming a numeric type which is of a fixed width.
       static_cast<void>(con);
-      
+
       std::ostringstream res;
       const unsigned char *val_bytes =
         reinterpret_cast<const unsigned char*>(&value);
@@ -433,9 +460,9 @@ class JdwpFieldBase : public IJdwpField {
     }
 
     /**
-     * Attemps to read a numeric value from encoded into \c value. 
+     * Attemps to read a numeric value from encoded into \c value.
      */
-    virtual void FromEncodedImpl(const string& encoded, IJdwpCon& con)
+    virtual size_t FromEncodedImpl(const string& encoded, IJdwpCon& con)
         override {
       static_cast<void>(con); // Assuming numeric type, which is fixed-width
 
@@ -449,6 +476,7 @@ class JdwpFieldBase : public IJdwpField {
         value_bytes[i] = encoded[value_size - 1 - i];
       }
 #endif
+      return value_size;
     }
 
     UnderlyingType value;
@@ -462,7 +490,7 @@ template <typename Derived, typename UnderlyingType>
 class JdwpVariableSizeFieldBase :
     public JdwpFieldBase<Derived, UnderlyingType> {
   protected:
-    void FromEncodedImpl(const string& encoded, IJdwpCon& con) override {
+    size_t FromEncodedImpl(const string& encoded, IJdwpCon& con) override {
       uint8_t bytes_to_read = this->GetSize(con);
       vector<unsigned char> bytes;
       for (int i = 0; i < bytes_to_read; i++) {
@@ -474,6 +502,8 @@ class JdwpVariableSizeFieldBase :
       for (size_t i = 0; i < bytes.size(); i++) {
         value_bytes[i] = bytes[i];
       }
+
+      return bytes_to_read;
     }
 
     string SerializeImpl(IJdwpCon& con) const override {
@@ -637,7 +667,8 @@ struct JdwpTaggedObjectId : public IJdwpField {
    */
   explicit JdwpTaggedObjectId(JdwpTag tag, JdwpObjId obj_id);
   protected:
-    virtual void FromEncodedImpl(const string &encoded, IJdwpCon &con) override;
+    virtual size_t FromEncodedImpl(const string &encoded,
+        IJdwpCon &con) override;
     virtual string SerializeImpl(IJdwpCon &con) const override;
 };
 
@@ -661,15 +692,18 @@ struct JdwpLocation : public IJdwpField {
     /**
      * The index of the location within the method.
      *
-     * There are a few rules about how these are laid out:
-     * <ul>
-     * <li>The index of the start location for the method is less than all other
-     * locations in the method.</li>
-     * <li>The index of the end location for the method is greater than all other
-     * locations in the method.</li>
-     * <li>If a line number table exists for a method, locations that belong to a
-     * particular line must fall between the line's location index and the
+     * There are a few rules about how these are laid out: <ul>
+     *
+     * <li>The index of the start location for the method is less than all
+     * other locations in the method.</li>
+     *
+     * <li>The index of the end location for the method is greater than all
+     * other locations in the method.</li>
+     *
+     * <li>If a line number table exists for a method, locations that belong to
+     * a particular line must fall between the line's location index and the
      * location index of the next line in the table
+     *
      * </ul>
      */
     uint64_t index;
@@ -679,8 +713,9 @@ struct JdwpLocation : public IJdwpField {
      */
     JdwpLocation();
     /**
-     * Constructs a \c JdwpLocation with the specified parameter. This constructor
-     * exists only as a convience for setting multiple fields simultaneously.
+     * Constructs a \c JdwpLocation with the specified parameter. This
+     * constructor exists only as a convience for setting multiple fields
+     * simultaneously.
      */
     explicit JdwpLocation(JdwpTypeTag type, JdwpClassId class_id,
         JdwpMethodId method_id, uint64_t index);
@@ -688,12 +723,13 @@ struct JdwpLocation : public IJdwpField {
   protected:
     /**
      * Returns a \c string version of this \c JdwpLocation encoded for JDWP.
-     * 
+     *
      * @param con The connection the data will be sent over. Used to get
      * appropriate serialization information.
      */
     virtual string SerializeImpl(IJdwpCon& con) const override;
-    virtual void FromEncodedImpl(const string& encoded, IJdwpCon& con) override;
+    virtual size_t FromEncodedImpl(const string& encoded,
+        IJdwpCon& con) override;
 };
 
 /**
@@ -709,7 +745,8 @@ struct JdwpString : IJdwpField {
     string& GetValue();
     const string& GetValue() const;
   protected:
-    virtual void FromEncodedImpl(const string &encoded, IJdwpCon& con) override;
+    virtual size_t FromEncodedImpl(const string &encoded,
+        IJdwpCon& con) override;
     virtual string SerializeImpl(IJdwpCon& con) const override;
   private:
     string data;
@@ -725,7 +762,8 @@ struct JdwpValue : IJdwpField {
      * Represents a JdwpValue with a type of void
      */
     struct VoidValue {
-      void FromEncoded(const string& encoded, IJdwpCon& con) {
+      static constexpr size_t value_size = 0;
+      size_t FromEncoded(const string& encoded, IJdwpCon& con) {
         static_cast<void>(encoded);
         static_cast<void>(con);
         throw std::logic_error("Trying to read a void value");
@@ -776,7 +814,8 @@ struct JdwpValue : IJdwpField {
      * @param t The type of the encoded value.
      * @param encoded The encoded data.
      */
-    void FromEncodedAsUntagged(JdwpTag t, const string& encoded, IJdwpCon& con);
+    size_t FromEncodedAsUntagged(JdwpTag t, const string& encoded,
+        IJdwpCon& con);
 
     /**
      * Returns a \c string version of this \c JdwpValue as a JDWP untagged
@@ -788,7 +827,7 @@ struct JdwpValue : IJdwpField {
     string SerializeAsUntagged(IJdwpCon& con) const;
   protected:
     string SerializeImpl(IJdwpCon& con) const override;
-    void FromEncodedImpl(const string& encoded, IJdwpCon& con) override;
+    size_t FromEncodedImpl(const string& encoded, IJdwpCon& con) override;
 };
 
 /**
@@ -817,7 +856,7 @@ struct JdwpArrayRegion : IJdwpField {
     JdwpArrayRegion(JdwpTag tag, const vector<unique_ptr<JdwpValue>>& values);
   protected:
     string SerializeImpl(IJdwpCon& con) const override;
-    void FromEncodedImpl(const string& encoded, IJdwpCon& con) override;
+    size_t FromEncodedImpl(const string& encoded, IJdwpCon& con) override;
 };
 
 }  // namespace roastery

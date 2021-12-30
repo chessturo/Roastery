@@ -34,7 +34,9 @@ class MockJdwpCon : public IJdwpCon {
     MOCK_METHOD(uint8_t, GetMethodIdSizeImpl, (), (override));
     MOCK_METHOD(uint8_t, GetFieldIdSizeImpl, (), (override));
     MOCK_METHOD(uint8_t, GetFrameIdSizeImpl, (), (override));
-    MOCK_METHOD(void, SendMessageImpl, (shared_ptr<IJdwpCommandPacket>),
+    MOCK_METHOD(void, RegisterEventHandlerImpl, (unique_ptr<Handler>),
+        (override));
+    MOCK_METHOD(void, SendMessageImpl, (unique_ptr<IJdwpCommandPacket>),
         (override));
 };
 

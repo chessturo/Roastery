@@ -2,7 +2,6 @@
    Copyright 2021 Mitchell Levy
 
 This file is a part of Roastery
-
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
@@ -35,8 +34,7 @@ namespace roastery {
 using std::string;
 
 /**
- * Holds flag values for JDWP.
- */
+ * Holds flag values for JDWP. */
 enum class JdwpFlags : uint8_t {
   kNone = 0x00,
   kReply = 0x80,
@@ -72,6 +70,26 @@ class IJdwpCommandPacket {
      */
     static string ProduceHeader(uint8_t command_set, uint8_t command,
         size_t body_len, uint32_t id);
+};
+
+struct JdwpCommandPacketHeader {
+  JdwpInt total_len;
+  JdwpInt id;
+  JdwpByte flags;
+  commands::CommandSet command_set;
+  JdwpByte command; // valid values depend on command_set
+  void FromEncoded(const string& encoded);
+  void FromHost(uint32_t total_len, uint32_t id, uint8_t flags,
+      commands::CommandSet command_set, JdwpByte command);
+  string Serialize() const;
+};
+
+struct JdwpReplyPacketHeader {
+  JdwpInt total_len;
+  JdwpInt id;
+  JdwpByte flags;
+  JdwpError error;
+  void FromEncoded(const string& encoded);
 };
 
 // Template metaprogramming helpers
@@ -192,13 +210,13 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
       }
     }
 
-    template<typename Field>
+    template<typename FieldBundle>
     static void RecursiveSerialize(std::stringstream& acc,
-        const vector<Field>& v, IJdwpCon& con) {
+        const vector<FieldBundle>& v, IJdwpCon& con) {
       JdwpInt len;
       len << v.size();
       acc << len.Serialize(con);
-      for (const Field& bundle : v) {
+      for (const FieldBundle& bundle : v) {
         TupleForEach(bundle, [&acc, &con](const auto& s) {
           RecursiveSerialize(acc, s, con);
         });
@@ -733,7 +751,7 @@ class StatusCommand :
 class ThreadGroupCommand :
     public CommandPacketBase<
       kThrdRef,
-      static_cast<uint8_t>(ThreadReference::kThreadGroup), 
+      static_cast<uint8_t>(ThreadReference::kThreadGroup),
       tuple<JdwpThreadId>
     > { };
 
@@ -896,7 +914,7 @@ class SetCommand : public IJdwpCommandPacket {
       tuple<JdwpString>
       >;
     using Fields = tuple<JdwpByte, JdwpByte, vector<Modifier>>;
-  
+
     SetCommand();
 
     Fields& GetFields();
@@ -969,6 +987,315 @@ class ReflectedTypeCommand :
 }  // namespace class_object_reference
 
 }  // namespace command_packets
+
+/**
+ * Returns \c true when the packet with the given \c header is an event packet,
+ * \c false otherwise.
+ */
+bool HeaderIsEvent(const string& header);
+
+class Handler;
+/**
+ * Represents a single event within a JDWP Composite Event.
+ */
+class IJdwpEvent {
+  public:
+    /**
+     * Parses a JDWP composite event into a \c vector of the contained events.
+     *
+     * @param encoded The JDWP encoded composite event, including the JDWP
+     * header.
+     * @param con The JDWP connection \c encoded was recieved from.
+     *
+     * @return A \c vector of \c unique_ptr to \c IJdwpEvent objects, one for
+     * each entry in \c encoded.
+     *
+     * @throws JdwpException if \c encoded does not represent a JDWP composite
+     * event packet or if the composite event packet is malformed.
+     */
+    static vector<unique_ptr<IJdwpEvent>> FromComposite(const string& encoded,
+        IJdwpCon& con);
+
+    /**
+     * Returns the \c JdwpEventKind of this event.
+     */
+    JdwpEventKind GetKind() const;
+    /**
+     * Reads \c encoded as a single event, including the \c eventKind byte.
+     *
+     * @see https://docs.oracle.com/javase/7/docs/platform/jpda/jdwp/jdwp-protocol.html#JDWP_Event
+     *
+     * @throws JdwpException if the \c eventKind byte in \c encoded does not
+     * match the kind expected by the run-time type of \c this.
+     */
+    size_t FromEncoded(const string& encoded, IJdwpCon& con);
+    /**
+     * Dispatches \c this to the appropriate method of \c handler based on the
+     * run-time type of \c this.
+     */
+    void Dispatch(Handler& handler);
+
+    virtual ~IJdwpEvent() = 0;
+  protected:
+    virtual JdwpEventKind GetKindImpl() const = 0;
+    /**
+     * Implements \c FromEncoded for a given JDWP event kind.
+     *
+     * @param encoded The JDWP encoded fields that are are specific to a given
+     * event kind (i.e., the message body without the event kind byte).
+     */
+    virtual size_t FromEncodedImpl(const string& encoded, IJdwpCon& con) = 0;
+    virtual void DispatchImpl(Handler& handler) = 0;
+};
+
+namespace impl {
+
+using std::tuple;
+
+/**
+ * Provides a base for types representing JDWP event packets.
+ *
+ * @tparam kind The JDWP command set of the command represented by this
+ * packet
+ * @tparam Fields A \c tuple of \c IJdwpField
+ */
+template <typename Derived, uint8_t kind, typename Fields>
+class EventBase : public IJdwpEvent {
+  public:
+    Fields& GetFields() { return this->fields; }
+    const Fields& GetFields() const { return this->fields; }
+  protected:
+    JdwpEventKind GetKindImpl() const override {
+      return static_cast<JdwpEventKind>(kind);
+    }
+    /**
+     * Provides a default implementation of \c FromEncoded. This will only
+     * handle \c Fields that are just a tuple of simple \c IJdwpField, \c vector
+     * fields won't work.
+     */
+    size_t FromEncodedImpl(const string& encoded, IJdwpCon& con) override {
+      size_t curr_idx = 0;
+      TupleForEach(this->fields, [&encoded, &con, &curr_idx](auto& f){
+        curr_idx += f.FromEncoded(encoded.substr(curr_idx), con);
+      });
+      return curr_idx;
+    }
+    void DispatchImpl(Handler& handler) override;
+  private:
+    Fields fields;
+};
+
+/**
+ * Defines a handler for all of the messages in the \c std::tuple \c AllMsgs
+ * that share a common interface \c Interface.
+ */
+template<typename Interface, typename AllMsgs>
+class GenericHandler;
+
+template<typename Interface, typename NextMsgType, typename... MsgRest>
+class GenericHandler<Interface, tuple<NextMsgType, MsgRest...>> :
+    GenericHandler<Interface, tuple<MsgRest...>> {
+  public:
+    // Don't hide the rest of the handle functions in the base class
+    using GenericHandler<Interface, tuple<MsgRest...>>::Handle;
+
+    /**
+     * Provides a default implementation for handling a message of \c NextMsgType.
+     * By default, uses the handler for the \c Interface type. Can be overriden
+     * in subclasses to customize behavior for certain messages.
+     */
+    virtual void Handle(NextMsgType& msg) {
+      this->Handle(static_cast<Interface&>(msg));
+    }
+};
+
+// Template recursion base case, no more types left in the tuple
+template<typename Interface>
+class GenericHandler<Interface, tuple<>> {
+  public:
+    /**
+     * Provides a default implementation of the generic message handler. By
+     * default, simply ignores the message.
+     */
+    virtual void Handle(Interface& msg) {
+      static_cast<void>(msg);
+    }
+};
+
+}  // namespace impl
+
+namespace events {
+
+using namespace impl;
+using std::tuple;
+
+class VmStart :
+    public EventBase<
+      VmStart,
+      static_cast<uint8_t>(JdwpEventKind::kVmStart),
+      tuple<JdwpInt, JdwpThreadId>
+    > { };
+
+class SingleStep :
+    public EventBase<
+      SingleStep,
+      static_cast<uint8_t>(JdwpEventKind::kSingleStep),
+      tuple<JdwpInt, JdwpThreadId, JdwpLocation>
+    > { };
+
+class Breakpoint :
+    public EventBase<
+      Breakpoint,
+      static_cast<uint8_t>(JdwpEventKind::kBreakpoint),
+      tuple<JdwpInt, JdwpThreadId, JdwpLocation>
+    > { };
+
+class MethodEntry :
+    public EventBase<
+      MethodEntry,
+      static_cast<uint8_t>(JdwpEventKind::kMethodEntry),
+      tuple<JdwpInt, JdwpThreadId, JdwpLocation>
+    > { };
+
+class MethodExit :
+    public EventBase<
+      MethodExit,
+      static_cast<uint8_t>(JdwpEventKind::kMethodExit),
+      tuple<JdwpInt, JdwpThreadId, JdwpLocation>
+    > { };
+
+class MethodExitWithReturnValue :
+    public EventBase<
+      MethodExitWithReturnValue,
+      static_cast<uint8_t>(JdwpEventKind::kMethodExitWithReturnValue),
+      tuple<JdwpInt, JdwpThreadId, JdwpLocation, JdwpValue>
+    > { };
+
+class MonitorContendedEnter :
+    public EventBase<
+      MonitorContendedEnter,
+      static_cast<uint8_t>(JdwpEventKind::kMonitorContendedEnter),
+      tuple<JdwpInt, JdwpThreadId, JdwpTaggedObjectId, JdwpLocation>
+    > { };
+
+class MonitorContendedEntered :
+    public EventBase<
+      MonitorContendedEntered,
+      static_cast<uint8_t>(JdwpEventKind::kMonitorContendedEntered),
+      tuple<JdwpInt, JdwpThreadId, JdwpTaggedObjectId, JdwpLocation>
+    > { };
+
+class MonitorWait :
+    public EventBase<
+      MonitorWait,
+      static_cast<uint8_t>(JdwpEventKind::kMonitorWait),
+      tuple<JdwpInt, JdwpThreadId, JdwpTaggedObjectId, JdwpLocation, JdwpLong>
+    > { };
+
+class MonitorWaited :
+    public EventBase<
+      MonitorWaited,
+      static_cast<uint8_t>(JdwpEventKind::kMonitorWaited),
+      tuple<JdwpInt, JdwpThreadId, JdwpTaggedObjectId, JdwpLocation, JdwpBool>
+    > { };
+
+class Exception :
+    public EventBase<
+      Exception,
+      static_cast<uint8_t>(JdwpEventKind::kException),
+      tuple<JdwpInt, JdwpThreadId, JdwpLocation, JdwpTaggedObjectId,
+        JdwpLocation>
+    > { };
+
+class ThreadStart :
+    public EventBase<
+      ThreadStart,
+      static_cast<uint8_t>(JdwpEventKind::kThreadStart),
+      tuple<JdwpInt, JdwpThreadId>
+    > { };
+
+class ThreadDeath :
+    public EventBase<
+      ThreadDeath,
+      static_cast<uint8_t>(JdwpEventKind::kThreadDeath),
+      tuple<JdwpInt, JdwpThreadId>
+    > { };
+
+class ClassPrepare :
+    public EventBase<
+      ClassPrepare,
+      static_cast<uint8_t>(JdwpEventKind::kClassPrepare),
+      tuple<JdwpInt, JdwpThreadId, JdwpByte, JdwpReferenceTypeId, JdwpString,
+        JdwpInt>
+    > { };
+
+class ClassUnload :
+    public EventBase<
+      ClassUnload,
+      static_cast<uint8_t>(JdwpEventKind::kClassUnload),
+      tuple<JdwpInt, JdwpString>
+    > { };
+
+class FieldAccess :
+    public EventBase<
+      FieldAccess,
+      static_cast<uint8_t>(JdwpEventKind::kFieldAccess),
+      tuple<JdwpInt, JdwpThreadId, JdwpLocation, JdwpByte, JdwpReferenceTypeId,
+        JdwpFieldId, JdwpTaggedObjectId>
+    > { };
+
+class FieldModification :
+    public EventBase<
+      FieldModification,
+      static_cast<uint8_t>(JdwpEventKind::kFieldModification),
+      tuple<JdwpInt, JdwpThreadId, JdwpLocation, JdwpByte, JdwpReferenceTypeId,
+        JdwpFieldId, JdwpTaggedObjectId, JdwpValue>
+    > { };
+
+class VmDeath :
+    public EventBase<
+      VmDeath,
+      static_cast<uint8_t>(JdwpEventKind::kVmDeath),
+      tuple<JdwpInt>
+    > { };
+
+/**
+ * A tuple of all implementations of \c IJdwpEvent
+ */
+using AllEvents = tuple<
+  VmStart,
+  SingleStep,
+  Breakpoint,
+  MethodEntry,
+  MethodExit,
+  MethodExitWithReturnValue,
+  MonitorContendedEnter,
+  MonitorContendedEntered,
+  MonitorWait,
+  MonitorWaited,
+  Exception,
+  ThreadStart,
+  ThreadDeath,
+  ClassPrepare,
+  ClassUnload,
+  FieldAccess,
+  FieldModification,
+  VmDeath
+  >;
+
+}  // namespace events
+
+/**
+ * Provides a generic handler that, by default, ignores all messages. Can be
+ * subclassed to provide handling functionality by overriding the various
+ * \c Handle methods.
+ */
+class Handler : public impl::GenericHandler<IJdwpEvent, events::AllEvents> { };
+
+template <typename Derived, uint8_t kind, typename Fields>
+void impl::EventBase<Derived, kind, Fields>::DispatchImpl(Handler& handler) {
+  handler.Handle(static_cast<Derived&>(*this));
+}
 
 }  // namespace roastery
 

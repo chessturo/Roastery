@@ -75,7 +75,7 @@ array<unsigned char, kHeaderLen> MakeCommandPacketHeader(uint32_t len,
 template<size_t size>
 void ExpectBytesEq(void* data, const std::array<unsigned char, size>& arr) {
   for (size_t i = 0; i < size; i++) {
-    EXPECT_EQ(*(reinterpret_cast<unsigned char*>(data) + i), arr[i]) 
+    EXPECT_EQ(*(reinterpret_cast<unsigned char*>(data) + i), arr[i])
       << "Bytes differ at: " << i;
   }
 }
@@ -165,6 +165,7 @@ TEST(PacketTest, Vector) {
   JdwpInt new_num_reqs;
   new_num_reqs.FromEncoded(encoded.substr(kHeaderLen), con);
   EXPECT_EQ(num_reqs.GetValue(), new_num_reqs.GetValue());
+#warning Ensure each entry in the field survied, will need to happen once we have type deserialization in place
 }
 
 using namespace event_request;
@@ -182,7 +183,7 @@ TEST(PacketTest, EventRequestSet) {
 
   vector<SetCommand::Modifier> modifiers;
 
-  SetCommand::Modifier mod1; 
+  SetCommand::Modifier mod1;
   JdwpInt count; count << 0;
   mod1.emplace<0>(count);
   modifiers.push_back(mod1);
@@ -210,7 +211,7 @@ TEST(PacketTest, EventRequestSet) {
   new_event_kind.FromEncoded(encoded.substr(curr_byte), con);
   EXPECT_EQ(new_event_kind.GetValue(), event_kind.GetValue());
   curr_byte += new_event_kind.value_size;
-  
+
   JdwpByte new_suspend_policy;
   new_suspend_policy.FromEncoded(encoded.substr(curr_byte), con);
   EXPECT_EQ(new_suspend_policy.GetValue(), suspend_policy.GetValue());
@@ -250,5 +251,85 @@ TEST(PacketTest, EventRequestSet) {
   new_uncaught.FromEncoded(encoded.substr(curr_byte), con);
   EXPECT_EQ(new_uncaught.GetValue(), uncaught.GetValue());
   curr_byte += new_uncaught.value_size;
+}
+
+TEST(PacketTest, CompositeEventTest) {
+  MockJdwpCon con;
+  EXPECT_CALL(con, GetObjIdSizeImpl).WillRepeatedly(Return(8));
+  EXPECT_CALL(con, GetMethodIdSizeImpl).WillRepeatedly(Return(8));
+
+  JdwpByte suspend_policy; suspend_policy << 0;
+  JdwpInt event_count; event_count << 2;
+
+  JdwpByte event_kind1;
+  event_kind1 << static_cast<uint8_t>(JdwpEventKind::kVmStart);
+  JdwpInt request_id1; request_id1 << 1;
+  JdwpThreadId thread_id1; thread_id1 << 1;
+
+  JdwpByte event_kind2;
+  event_kind2 << static_cast<uint8_t>(JdwpEventKind::kSingleStep);
+  JdwpInt request_id2; request_id2 << 2;
+  JdwpThreadId thread_id2; thread_id1 << 2;
+  JdwpLocation loc;
+  loc.type = JdwpTypeTag::kClass;
+  loc.class_id << 1;
+  loc.method_id << 1;
+  loc.index = 1;
+
+  string packet_body = suspend_policy.Serialize(con) +
+    event_count.Serialize(con) + event_kind1.Serialize(con) +
+    request_id1.Serialize(con) + thread_id1.Serialize(con) +
+    event_kind2.Serialize(con) + request_id2.Serialize(con) +
+    thread_id2.Serialize(con) + loc.Serialize(con);
+  array<uint8_t, kHeaderLen> header =
+    MakeCommandPacketHeader(packet_body.length() + kHeaderLen, 0,
+        static_cast<uint8_t>(JdwpFlags::kNone),
+        static_cast<uint8_t>(commands::CommandSet::kEvent),
+        static_cast<uint8_t>(commands::Event::kComposite));
+  string packet = string(header.begin(), header.end()) + packet_body;
+
+  auto decoded_events = IJdwpEvent::FromComposite(packet, con);
+  ASSERT_EQ(decoded_events.size(), static_cast<size_t>(event_count.GetValue()));
+  ASSERT_EQ(decoded_events[0]->GetKind(),
+      static_cast<JdwpEventKind>(event_kind1.GetValue()));
+  ASSERT_EQ(decoded_events[1]->GetKind(),
+      static_cast<JdwpEventKind>(event_kind2.GetValue()));
+
+  class TestingHandler : public Handler {
+    public:
+      using Handler::Handle;
+      TestingHandler(JdwpInt req_id1, JdwpInt req_id2,JdwpThreadId thread_id1,
+          JdwpThreadId thread_id2, JdwpLocation location) :
+          req_id1(req_id1), req_id2(req_id2), thread_id1(thread_id1),
+          thread_id2(thread_id2), location(location) { }
+
+      void Handle(IJdwpEvent& event) override {
+        FAIL() << "Wrong event kind handler called, event kind: " <<
+          static_cast<uint8_t>(event.GetKind());
+      }
+
+      void Handle(events::VmStart& event) override {
+        EXPECT_EQ(get<0>(event.GetFields()).GetValue(), req_id1.GetValue());
+        EXPECT_EQ(get<1>(event.GetFields()).GetValue(), thread_id1.GetValue());
+      }
+
+      void Handle(events::SingleStep& event) override {
+        EXPECT_EQ(get<0>(event.GetFields()).GetValue(), req_id2.GetValue());
+        EXPECT_EQ(get<1>(event.GetFields()).GetValue(), thread_id2.GetValue());
+        EXPECT_EQ(get<2>(event.GetFields()).class_id.GetValue(),
+            location.class_id.GetValue());
+        EXPECT_EQ(get<2>(event.GetFields()).method_id.GetValue(),
+            location.method_id.GetValue());
+        EXPECT_EQ(get<2>(event.GetFields()).index, location.index);
+      }
+    private:
+      JdwpInt req_id1, req_id2; JdwpThreadId thread_id1, thread_id2;
+      JdwpLocation location;
+  };
+
+  TestingHandler h(request_id1, request_id2, thread_id1, thread_id2, loc);
+
+  decoded_events[0]->Dispatch(h);
+  decoded_events[1]->Dispatch(h);
 }
 

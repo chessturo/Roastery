@@ -21,6 +21,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <atomic>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -31,6 +32,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "jdwp_socket.hpp"
 
 using std::lock_guard;
+using std::map;
 using std::mutex;
 using std::queue;
 using std::shared_ptr;
@@ -39,7 +41,7 @@ using std::thread;
 namespace roastery {
 
 // IJdwpCon Housekeeping
-IJdwpCon::~IJdwpCon() { }
+IJdwpCon::~IJdwpCon() = default;
 
 /**
  * Implementation of \c JdwpCon.
@@ -50,12 +52,11 @@ class JdwpCon::Impl : public IJdwpCon {
      * Creates a new \c JdwpCon::Impl, connected to \c localhost.
      *
      * @param port The port to connect on. Should be in host byte order.
-     * 
+     *
      * @throws std::system_error if there is a system error
      * creating/reading/writing to the socket created.
      */
     explicit Impl(uint16_t port) : Impl("localhost", port) { }
-
     /**
      * Creates a new \c JdwpCon::Impl, connected to \c address.
      *
@@ -68,6 +69,7 @@ class JdwpCon::Impl : public IJdwpCon {
      */
     explicit Impl(const string& address, uint16_t port) :
         socket(new JdwpSocket(address, port)),
+        should_cancel(false),
         write_thread(&Impl::OutgoingMessageQueueHandler, this),
         read_thread(&Impl::IncomingMessageQueueHandler, this) { }
 
@@ -110,33 +112,53 @@ class JdwpCon::Impl : public IJdwpCon {
     uint8_t GetFrameIdSizeImpl() override { return 0; }
 
     /**
+     * Registers the given \c handler, which will have the appropriate \c Handle
+     * function invoked when an event packet is recieved.
+     */
+    void RegisterEventHandlerImpl(unique_ptr<Handler> handler) override {
+      lock_guard<mutex> l(this->event_handlers_lck);
+      this->event_handlers.push_back(move(handler));
+    }
+
+    /**
      * Queues the given message to be send to the JVM.
-     * 
+     *
      * @param message The message to send.
      */
-    void SendMessageImpl(shared_ptr<IJdwpCommandPacket> message) override {
-        lock_guard<mutex> l = lock_guard<mutex>(outgoing_messages_lck);
-        this->outgoing_messages.push(message);
+    void SendMessageImpl(unique_ptr<IJdwpCommandPacket> message) override {
+        lock_guard<mutex> l(this->outgoing_messages_lck);
+        this->outgoing_messages.push(move(message));
     }
   private:
     unique_ptr<JdwpSocket> socket;
 
     std::atomic_bool should_cancel;
     thread write_thread, read_thread;
-    queue<shared_ptr<IJdwpCommandPacket>> outgoing_messages;
+    queue<unique_ptr<IJdwpCommandPacket>> outgoing_messages;
     mutex outgoing_messages_lck;
-    queue<shared_ptr<void>> incoming_messages; mutex incoming_messages_lck;
+
+    /**
+     * Maps from message IDs to their replies.
+     */
+    std::map<uint32_t, shared_ptr<void>> incoming_messages;
+    mutex incoming_messages_lck;
+
+    /**
+     * Hols all currently registered event handlers
+     */
+    vector<unique_ptr<Handler>> event_handlers;
+    mutex event_handlers_lck;
 
     /**
      * Dispatches outgoing messages to \c socket.
      */
     void OutgoingMessageQueueHandler() {
       while (!this->should_cancel) {
-        shared_ptr<IJdwpCommandPacket> next_packet;
+        unique_ptr<IJdwpCommandPacket> next_packet;
         if (!this->outgoing_messages.empty()) {
           {
-            lock_guard<mutex> l = lock_guard<mutex>(outgoing_messages_lck);
-            next_packet = this->outgoing_messages.front();
+            lock_guard<mutex> l(outgoing_messages_lck);
+            next_packet = move(this->outgoing_messages.front());
             this->outgoing_messages.pop();
           }
           this->socket->Write(next_packet->Serialize(*this));
@@ -157,20 +179,34 @@ class JdwpCon::Impl : public IJdwpCon {
               // Read the first four bytes of the header as a length.
               *reinterpret_cast<uint32_t*>(header.data()));
           string body = this->socket->Read(total_len - impl::kHeaderLen);
+          string packet = header + body;
+          if (HeaderIsEvent(header)) {
+            auto events = IJdwpEvent::FromComposite(packet, *this);
+            for (auto& event : events) {
+              for (auto& handler : event_handlers) {
+                event->Dispatch(*handler);
+              }
+            }
+          } else {
+            lock_guard<mutex> l(incoming_messages_lck);
+            // add new message to the map
+          }
         } else {
           std::this_thread::yield();
         }
       }
     }
-
 };
 
 uint8_t IJdwpCon::GetObjIdSize() { return this->GetObjIdSizeImpl(); }
 uint8_t IJdwpCon::GetMethodIdSize() { return this->GetMethodIdSizeImpl(); }
 uint8_t IJdwpCon::GetFieldIdSize() { return this->GetFieldIdSizeImpl(); }
 uint8_t IJdwpCon::GetFrameIdSize() { return this->GetFrameIdSizeImpl(); }
-void IJdwpCon::SendMessage(shared_ptr<IJdwpCommandPacket> message) {
-  this->SendMessageImpl(message);
+void IJdwpCon::RegisterEventHandler(unique_ptr<Handler> handler) {
+  this->RegisterEventHandlerImpl(move(handler));
+}
+void IJdwpCon::SendMessage(unique_ptr<IJdwpCommandPacket> message) {
+  this->SendMessageImpl(move(message));
 }
 
 JdwpCon::JdwpCon(uint16_t port) :
@@ -189,8 +225,11 @@ uint8_t JdwpCon::GetMethodIdSizeImpl() {
 }
 uint8_t JdwpCon::GetFieldIdSizeImpl() { return this->pImpl->GetFieldIdSize(); }
 uint8_t JdwpCon::GetFrameIdSizeImpl() { return this->pImpl->GetFrameIdSize(); }
-void JdwpCon::SendMessageImpl(shared_ptr<IJdwpCommandPacket> p) {
-  return this->pImpl->SendMessage(p);
+void JdwpCon::RegisterEventHandlerImpl(unique_ptr<Handler> handler) {
+  this->pImpl->RegisterEventHandler(move(handler));
+}
+void JdwpCon::SendMessageImpl(unique_ptr<IJdwpCommandPacket> p) {
+  return this->pImpl->SendMessage(move(p));
 }
 
 }  // namespace roastery
