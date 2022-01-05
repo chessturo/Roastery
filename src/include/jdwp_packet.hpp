@@ -79,10 +79,10 @@ using std::forward;
 using std::get;
 using std::tuple_size;
 
-template <size_t rem>
+template<size_t rem>
 class TupleForEachHelper {
   public:
-    template <typename Tuple, typename Func>
+    template<typename Tuple, typename Func>
     static void Exec(Tuple&& tuple, Func&& func) {
       constexpr size_t tuple_siz = tuple_size<std::decay_t<Tuple>>::value;
       static_assert(rem <= tuple_siz, "Bad size in TupleForEachHelper");
@@ -94,10 +94,10 @@ class TupleForEachHelper {
 };
 
 // template recursion base case: 0 elements remaining
-template <>
+template<>
 class TupleForEachHelper<0> {
   public:
-    template <typename Tuple, typename Func>
+    template<typename Tuple, typename Func>
     static void Exec(Tuple&& tuple, Func&& func) {
       static_cast<void>(tuple);
       static_cast<void>(func);
@@ -110,7 +110,7 @@ class TupleForEachHelper<0> {
  * @param tuple The tuple to iterate over
  * @param func The functor to execute on each value in \c tuple.
  */
-template <typename Tuple, typename Func>
+template<typename Tuple, typename Func>
 void TupleForEach(Tuple&& tuple, Func&& func) {
   TupleForEachHelper
     <tuple_size<std::decay_t<Tuple>>::value>
@@ -148,7 +148,7 @@ const uint32_t kHeaderLen = 11;
  * \c std::vectors of \c std::tuple of \c IJdwpField / \c std::vector
  * (recursively) combinations.
  */
-template <uint8_t command_set, uint8_t command, typename Fields>
+template<uint8_t command_set, uint8_t command, typename Fields>
 class CommandPacketBase : public roastery::IJdwpCommandPacket {
   public:
     CommandPacketBase() : IJdwpCommandPacket() { }
@@ -180,7 +180,7 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
      * \c JdwpInt length and then recursively serializing each element.
      * Otherwise, just serializes the element.
      */
-    template <typename Field>
+    template<typename Field>
     static void RecursiveSerialize(std::stringstream& acc, const Field& field,
         IJdwpCon& con) {
       if (IsVector<Field>::value) {
@@ -206,7 +206,7 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
     Fields fields;
 };
 
-template <uint8_t command_set, uint8_t command, typename Fields>
+template<uint8_t command_set, uint8_t command, typename Fields>
 CommandPacketBase<command_set, command, Fields>::~CommandPacketBase() { }
 
 }  // namespace impl
@@ -1039,7 +1039,7 @@ using std::tuple;
  * packet
  * @tparam Fields A \c tuple of \c IJdwpField
  */
-template <typename Derived, uint8_t kind, typename Fields>
+template<typename Derived, uint8_t kind, typename Fields>
 class EventBase : public IJdwpEvent {
   public:
     Fields& GetFields() { return this->fields; }
@@ -1272,7 +1272,7 @@ using AllEvents = tuple<
  */
 class Handler : public impl::GenericHandler<IJdwpEvent, events::AllEvents> { };
 
-template <typename Derived, uint8_t kind, typename Fields>
+template<typename Derived, uint8_t kind, typename Fields>
 void impl::EventBase<Derived, kind, Fields>::DispatchImpl(Handler& handler) {
   handler.Handle(static_cast<Derived&>(*this));
 }
