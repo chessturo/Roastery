@@ -72,26 +72,6 @@ class IJdwpCommandPacket {
         size_t body_len, uint32_t id);
 };
 
-struct JdwpCommandPacketHeader {
-  JdwpInt total_len;
-  JdwpInt id;
-  JdwpByte flags;
-  commands::CommandSet command_set;
-  JdwpByte command; // valid values depend on command_set
-  void FromEncoded(const string& encoded);
-  void FromHost(uint32_t total_len, uint32_t id, uint8_t flags,
-      commands::CommandSet command_set, JdwpByte command);
-  string Serialize() const;
-};
-
-struct JdwpReplyPacketHeader {
-  JdwpInt total_len;
-  JdwpInt id;
-  JdwpByte flags;
-  JdwpError error;
-  void FromEncoded(const string& encoded);
-};
-
 // Template metaprogramming helpers
 namespace impl {
 
