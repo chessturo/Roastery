@@ -159,8 +159,6 @@ TEST_LIBS ::= -l$(GMOCK_MAIN) -l$(GMOCK) -l$(GTEST)
 test: $(TEST_EXE)
 	@./$(TEST_EXE)
 testclean:
-	$(info $(TEST_OBJ_DIR)/mock_jdwp_con.o)
-	$(info $(MOCK_SRC_DIR)/mock_jdwp_con.cpp)
 	rm -rf test/test-*
 	@# Uncomment for `testclean` to force a recompile of gtest
 	@#rm -rf $(GTEST_BUILD_DIR)
@@ -168,7 +166,6 @@ testclean:
 # -----------------------------------------------------------------------------
 # Build objects
 $(TEST_EXE): $(GTEST_LIB) $(GTEST_MAIN_LIB) $(GMOCK_LIB) $(filter-out $(OBJ_DIR)/roast.o,$(OBJS)) $(TEST_OBJS) $(MOCK_OBJS)
-	$(info $(GTEST_LIB))
 	$(info Linking $(green)$@$(reset) due to $?)
 	@$(CXX) $(DEPFLAGS.test) $(CFLAGS.test) -o $@ $(filter-out $(OBJ_DIR)/roast.o,$(OBJS)) $(TEST_OBJS) $(MOCK_OBJS) $(TEST_LIBS)
 
