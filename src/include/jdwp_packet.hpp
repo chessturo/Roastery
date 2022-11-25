@@ -209,7 +209,7 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
       JdwpByte flags;
       JdwpShort errc;
       // TODO finishme
-      return nullptr;
+      return RespFields();
     }
   private:
     /**
