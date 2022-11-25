@@ -80,28 +80,26 @@ using std::get;
 using std::tuple_size;
 
 template<size_t rem>
-class TupleForEachHelper {
-  public:
-    template<typename Tuple, typename Func>
-    static void Exec(Tuple&& tuple, Func&& func) {
-      constexpr size_t tuple_siz = tuple_size<std::decay_t<Tuple>>::value;
-      static_assert(rem <= tuple_siz, "Bad size in TupleForEachHelper");
-      constexpr size_t idx = tuple_siz - rem;
-      func(get<idx>(tuple));
-      TupleForEachHelper<rem - 1>
-        ::Exec(forward<Tuple>(tuple), forward<Func>(func));
-    }
+struct TupleForEachHelper {
+  template<typename Tuple, typename Func>
+  static void Exec(Tuple&& tuple, Func&& func) {
+    constexpr size_t tuple_siz = tuple_size<std::decay_t<Tuple>>::value;
+    static_assert(rem <= tuple_siz, "Bad size in TupleForEachHelper");
+    constexpr size_t idx = tuple_siz - rem;
+    func(get<idx>(tuple));
+    TupleForEachHelper<rem - 1>
+      ::Exec(forward<Tuple>(tuple), forward<Func>(func));
+  }
 };
 
 // template recursion base case: 0 elements remaining
 template<>
-class TupleForEachHelper<0> {
-  public:
-    template<typename Tuple, typename Func>
-    static void Exec(Tuple&& tuple, Func&& func) {
-      static_cast<void>(tuple);
-      static_cast<void>(func);
-    }
+struct TupleForEachHelper<0> {
+  template<typename Tuple, typename Func>
+  static void Exec(Tuple&& tuple, Func&& func) {
+    static_cast<void>(tuple);
+    static_cast<void>(func);
+  }
 };
 
 /**
@@ -116,6 +114,30 @@ void TupleForEach(Tuple&& tuple, Func&& func) {
     <tuple_size<std::decay_t<Tuple>>::value>
     ::Exec(forward<Tuple>(tuple), forward<Func>(func));
 }
+
+template <typename...>
+struct ConcatTuple;
+
+template <typename... T1, typename... T2>
+struct ConcatTuple<std::tuple<T1...>, std::tuple<T2...>>
+{
+   using Type = std::tuple<T1..., T2...>;
+};
+
+template<typename T, size_t rem>
+struct RepeatedTuple {
+  static_assert(rem > 0);
+
+  using Type = typename ConcatTuple<
+      typename RepeatedTuple<T, rem - 1>::Type, std::tuple<T>
+    >::Type;
+};
+
+template<typename T>
+struct RepeatedTuple<T, 0> {
+  using Type = std::tuple<T>;
+};
+
 
 /**
  * Helper to determine if \c T is a \c std::vector.
@@ -147,8 +169,11 @@ const uint32_t kHeaderLen = 11;
  * @tparam Fields a std::tuple of \c IJdwpField interspersed with
  * \c std::vectors of \c std::tuple of \c IJdwpField / \c std::vector
  * (recursively) combinations.
+ * @tparam RespFields same format as \c Fields, but the fields of the
+ * corresponding response packet.
  */
-template<uint8_t command_set, uint8_t command, typename Fields>
+template<uint8_t command_set, uint8_t command, typename Fields,
+  typename RespFields>
 class CommandPacketBase : public roastery::IJdwpCommandPacket {
   public:
     CommandPacketBase() : IJdwpCommandPacket() { }
@@ -173,6 +198,18 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
       string body = body_acc.str();
       return ProduceHeader(command_set, command, body.length(), this->id) +
         body;
+    }
+
+    /**
+     * Provides a default implementation of \c Deserialize. Interprets the given
+     * message as a reply containing \c RespFields as its data.
+     */
+    virtual RespFields DeserializeImpl(const string& msg, IJdwpCon& con) const {
+      JdwpInt len, id;
+      JdwpByte flags;
+      JdwpShort errc;
+      // TODO finishme
+      return nullptr;
     }
   private:
     /**
@@ -206,8 +243,10 @@ class CommandPacketBase : public roastery::IJdwpCommandPacket {
     Fields fields;
 };
 
-template<uint8_t command_set, uint8_t command, typename Fields>
-CommandPacketBase<command_set, command, Fields>::~CommandPacketBase() { }
+template<uint8_t command_set, uint8_t command, typename Fields,
+  typename RespFields>
+CommandPacketBase<command_set, command, Fields, RespFields>::
+  ~CommandPacketBase() { }
 
 }  // namespace impl
 
@@ -227,41 +266,47 @@ class VersionCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kVersion),
-      tuple<>
+      tuple<>,
+      tuple<JdwpString, JdwpInt, JdwpInt, JdwpString, JdwpString>
     > { };
 
 class ClassesBySignatureCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kClassesBySignature),
-      tuple<JdwpString>
+      tuple<JdwpString>,
+      tuple<vector<tuple<JdwpByte, JdwpReferenceTypeId, JdwpInt>>>
     > { };
 
 class AllClassesCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kAllClasses),
-      tuple<>
+      tuple<>,
+      tuple<vector<tuple<JdwpByte, JdwpReferenceTypeId, JdwpString, JdwpInt>>>
     > { };
 
 class AllThreadsCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kAllThreads),
-      tuple<>
+      tuple<>,
+      tuple<vector<tuple<JdwpThreadId>>>
     > { };
 
 class TopLevelThreadGroupsCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kTopLevelThreadGroups),
-      tuple<>
+      tuple<>,
+      tuple<vector<JdwpThreadGroupId>>
     > { };
 
 class DisposeCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kDispose),
+      tuple<>,
       tuple<>
     > { };
 
@@ -269,13 +314,15 @@ class IDSizesCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kIDSizes),
-      tuple<>
+      tuple<>,
+      tuple<JdwpInt, JdwpInt, JdwpInt, JdwpInt, JdwpInt>
     > { };
 
 class SuspendCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kSuspend),
+      tuple<>,
       tuple<>
     > { };
 
@@ -283,6 +330,7 @@ class ResumeCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kResume),
+      tuple<>,
       tuple<>
     > { };
 
@@ -290,41 +338,48 @@ class ExitCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kExit),
-      tuple<JdwpInt>
+      tuple<JdwpInt>,
+      tuple<>
     > { };
 
 class CreateStringCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kCreateString),
-      tuple<JdwpString>
+      tuple<JdwpString>,
+      tuple<JdwpStringId>
     > { };
 
 class CapabilitiesCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kCapabilities),
-      tuple<>
+      tuple<>,
+      tuple<JdwpBool, JdwpBool, JdwpBool, JdwpBool, JdwpBool, JdwpBool,
+        JdwpBool>
     > { };
 
 class ClassPathsCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kClassPaths),
-      tuple<>
+      tuple<>,
+      tuple<JdwpString, vector<tuple<JdwpString>>, vector<tuple<JdwpString>>>
     > { };
 
 class DisposeObjectsCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kDisposeObjects),
-      tuple<vector<tuple<JdwpObjId, JdwpInt>>>
+      tuple<vector<tuple<JdwpObjId, JdwpInt>>>,
+      tuple<>
     > { };
 
 class HoldEventsCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kHoldEvents),
+      tuple<>,
       tuple<>
     > { };
 
@@ -332,6 +387,7 @@ class ReleaseEventsCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kReleaseEvents),
+      tuple<>,
       tuple<>
     > { };
 
@@ -339,35 +395,42 @@ class CapabilitiesNewCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kCapabilitiesNew),
-      tuple<>
+      tuple<>,
+      typename impl::RepeatedTuple<JdwpBool, 32>::Type
     > { };
 
 class RedefineClassesCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kRedefineClassese),
-      tuple<vector<tuple<JdwpReferenceTypeId, vector<JdwpByte>>>>
+      tuple<vector<tuple<JdwpReferenceTypeId, vector<JdwpByte>>>>,
+      tuple<>
     > { };
 
 class SetDefaultStratumCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kSetDefaultStratum),
-      tuple<JdwpString>
+      tuple<JdwpString>,
+      tuple<>
     > { };
 
 class AllClassesWithGenericCommand :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kAllClassesWithGeneric),
-      tuple<>
+      tuple<>,
+      tuple<vector<
+        tuple<JdwpByte, JdwpReferenceTypeId, JdwpString, JdwpString, JdwpInt>
+      >>
     > { };
 
 class InstanceCounts :
     public CommandPacketBase<
       kVm,
       static_cast<uint8_t>(VirtualMachine::kInstanceCounts),
-      tuple<vector<tuple<JdwpReferenceTypeId>>>
+      tuple<vector<tuple<JdwpReferenceTypeId>>>,
+      tuple<vector<tuple<JdwpLong>>>
     > { };
 
 }  // namespace virtual_machine
@@ -380,126 +443,148 @@ class SignatureCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kSignature),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpString>
     > { };
 
 class ClassLoaderCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kClassLoader),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpClassLoaderId>
     > { };
 
 class ModifiersCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kModifiers),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpInt>
     > { };
 
 class FieldsCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kFields),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<vector<tuple<JdwpFieldId, JdwpString, JdwpString, JdwpInt>>>
     > { };
 
 class MethodsCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kMethods),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<vector<tuple<JdwpMethodId, JdwpString, JdwpString, JdwpInt>>>
     > { };
 
 class GetValuesCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kGetValues),
-      tuple<JdwpReferenceTypeId, vector<tuple<JdwpFieldId>>>
+      tuple<JdwpReferenceTypeId, vector<tuple<JdwpFieldId>>>,
+      tuple<vector<tuple<JdwpValue>>>
     > { };
 
 class SourceFileCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kSourceFile),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpString>
     > { };
 
 class NestedTypesCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kNestedTypes),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<vector<tuple<JdwpByte, JdwpReferenceTypeId>>>
     > { };
 
 class StatusCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kStatus),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpInt>
     > { };
 
 class InterfacesCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kInterfaces),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<vector<tuple<JdwpInterfaceId>>>
     > { };
 
 class ClassObjectCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kClassObject),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpClassObjectId>
     > { };
 
 class SourceDebugExtensionCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kSourceDebugExtension),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpString>
     > { };
 
 class SignatureWithGenericCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kSignatureWithGeneric),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpString, JdwpString>
     > { };
 
 class FieldsWithGenericCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kFieldsWithGeneric),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<vector<
+        tuple<JdwpFieldId, JdwpString, JdwpString, JdwpString, JdwpInt>
+      >>
     > { };
 
 class MethodsWithGenericCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kMethodsWithGeneric),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<vector<
+        tuple<JdwpMethodId, JdwpString, JdwpString, JdwpString, JdwpInt>
+      >>
     > { };
 
 class InstancesCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kInstances),
-      tuple<JdwpReferenceTypeId, JdwpInt>
+      tuple<JdwpReferenceTypeId, JdwpInt>,
+      tuple<vector<tuple<JdwpTaggedObjectId>>>
     > { };
 
 class ClassFileVersionCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kClassFileVersion),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpInt, JdwpInt>
     > { };
 
 class ConstantPoolCommand :
     public CommandPacketBase<
       kRefType,
       static_cast<uint8_t>(ReferenceType::kConstantPool),
-      tuple<JdwpReferenceTypeId>
+      tuple<JdwpReferenceTypeId>,
+      tuple<JdwpInt, vector<tuple<JdwpByte>>>
     > { };
 
 }  // namespace reference_type
@@ -512,6 +597,7 @@ class SuperclassCommand :
     public CommandPacketBase<
       kClassType,
       static_cast<uint8_t>(ClassType::kSuperclass),
+      tuple<JdwpClassId>,
       tuple<JdwpClassId>
     > { };
 
@@ -519,7 +605,8 @@ class SetValuesCommand :
     public CommandPacketBase<
       kClassType,
       static_cast<uint8_t>(ClassType::kSetValues),
-      tuple<JdwpClassId, vector<tuple<JdwpFieldId, JdwpValue>>>
+      tuple<JdwpClassId, vector<tuple<JdwpFieldId, JdwpValue>>>,
+      tuple<>
     > {
   protected:
     // Because the JdwpValues need to be untagged, which isn't the default,
@@ -532,7 +619,8 @@ class InvokeMethodCommand :
       kClassType,
       static_cast<uint8_t>(ClassType::kInvokeMethod),
       tuple<JdwpClassId, JdwpThreadId, JdwpMethodId, vector<tuple<JdwpValue>>,
-        JdwpInt>
+        JdwpInt>,
+      tuple<JdwpValue, JdwpTaggedObjectId>
     > { };
 
 class NewInstanceCommand :
@@ -540,7 +628,8 @@ class NewInstanceCommand :
       kClassType,
       static_cast<uint8_t>(ClassType::kNewInstance),
       tuple<JdwpClassId, JdwpThreadId, JdwpMethodId, vector<tuple<JdwpValue>>,
-        JdwpInt>
+        JdwpInt>,
+      tuple<JdwpTaggedObjectId, JdwpTaggedObjectId>
     > { };
 
 }  // namespace class_type
@@ -551,7 +640,8 @@ class NewInstanceCommand :
     public CommandPacketBase<
       static_cast<uint8_t>(CommandSet::kArrayType),
       static_cast<uint8_t>(ArrayType::kNewInstance),
-      tuple<JdwpArrayTypeId, JdwpInt>
+      tuple<JdwpArrayTypeId, JdwpInt>,
+      tuple<JdwpTaggedObjectId>
     > { };
 
 }  // namespace array_type
@@ -571,35 +661,48 @@ class LineTableCommand :
     public CommandPacketBase<
       kMethod,
       static_cast<uint8_t>(Method::kLineTable),
-      tuple<JdwpReferenceTypeId, JdwpMethodId>
+      tuple<JdwpReferenceTypeId, JdwpMethodId>,
+      tuple<JdwpLong, JdwpLong, vector<tuple<JdwpLong, JdwpInt>>>
     > { };
 
 class VariableTableCommand :
     public CommandPacketBase<
       kMethod,
       static_cast<uint8_t>(Method::kVariableTable),
-      tuple<JdwpReferenceTypeId, JdwpMethodId>
+      tuple<JdwpReferenceTypeId, JdwpMethodId>,
+      tuple<
+        JdwpInt,
+        vector<tuple<JdwpLong, JdwpString, JdwpString, JdwpInt, JdwpInt>>
+      >
     > { };
 
 class BytecodesCommand :
     public CommandPacketBase<
       kMethod,
       static_cast<uint8_t>(Method::kBytecodes),
-      tuple<JdwpReferenceTypeId, JdwpMethodId>
+      tuple<JdwpReferenceTypeId, JdwpMethodId>,
+      tuple<vector<tuple<JdwpByte>>>
     > { };
 
 class IsObsoleteCommand :
     public CommandPacketBase<
       kMethod,
       static_cast<uint8_t>(Method::kIsObsolete),
-      tuple<JdwpReferenceTypeId, JdwpMethodId>
+      tuple<JdwpReferenceTypeId, JdwpMethodId>,
+      tuple<JdwpBool>
     > { };
 
 class VariableTableWithGenericCommand :
     public CommandPacketBase<
       kMethod,
       static_cast<uint8_t>(Method::kVariableTableWithGeneric),
-      tuple<JdwpReferenceTypeId, JdwpMethodId>
+      tuple<JdwpReferenceTypeId, JdwpMethodId>,
+      tuple<
+        JdwpLong,
+        vector<
+          tuple<JdwpLong, JdwpString, JdwpString, JdwpString, JdwpInt, JdwpInt>
+        >
+      >
     > { };
 
 }  // namespace method
@@ -618,21 +721,24 @@ class ReferenceTypeCommand :
     CommandPacketBase<
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kReferenceType),
-      tuple<JdwpObjId>
+      tuple<JdwpObjId>,
+      tuple<JdwpByte, JdwpReferenceTypeId>
     > { };
 
 class GetValuesCommand :
     CommandPacketBase<
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kGetValues),
-      tuple<JdwpObjId, vector<tuple<JdwpFieldId>>>
+      tuple<JdwpObjId, vector<tuple<JdwpFieldId>>>,
+      tuple<vector<tuple<JdwpValue>>>
     > { };
 
 class SetValuesCommand :
     CommandPacketBase<
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kSetValues),
-      tuple<JdwpObjId, vector<tuple<JdwpFieldId, JdwpValue>>>
+      tuple<JdwpObjId, vector<tuple<JdwpFieldId, JdwpValue>>>,
+      tuple<>
     > {
   protected:
     // Need to serialize the values as untagged, which isn't the default, so
@@ -644,7 +750,8 @@ class MonitorInfoCommand :
     CommandPacketBase<
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kMonitorInfo),
-      tuple<JdwpObjId>
+      tuple<JdwpObjId>,
+      tuple<JdwpThreadId, JdwpInt, vector<tuple<JdwpThreadId>>>
     > { };
 
 class InvokeMethodCommand :
@@ -652,35 +759,40 @@ class InvokeMethodCommand :
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kInvokeMethod),
       tuple<JdwpObjId, JdwpThreadId, JdwpClassId, JdwpMethodId,
-        vector<tuple<JdwpValue>>, JdwpInt>
+        vector<tuple<JdwpValue>>, JdwpInt>,
+      tuple<JdwpValue, JdwpTaggedObjectId>
     > { };
 
 class DisableCollectionCommand :
     CommandPacketBase<
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kDisableCollection),
-      tuple<JdwpObjId>
+      tuple<JdwpObjId>,
+      tuple<>
     > { };
 
 class EnableCollectionCommand :
     CommandPacketBase<
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kEnableCollection),
-      tuple<JdwpObjId>
+      tuple<JdwpObjId>,
+      tuple<>
     > { };
 
 class IsCollectedCommand :
     CommandPacketBase<
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kIsCollected),
-      tuple<JdwpObjId>
+      tuple<JdwpObjId>,
+      tuple<JdwpBool>
     > { };
 
 class ReferringObjectsCommand :
     CommandPacketBase<
       kObjRef,
       static_cast<uint8_t>(ObjectReference::kReferringObjects),
-      tuple<JdwpObjId, JdwpInt>
+      tuple<JdwpObjId, JdwpInt>,
+      tuple<vector<tuple<JdwpTaggedObjectId>>>
     > { };
 
 }  // namespace object_reference
@@ -691,7 +803,8 @@ class ValueCommand :
     CommandPacketBase<
       static_cast<uint8_t>(CommandSet::kStringReference),
       static_cast<uint8_t>(StringReference::kValue),
-      tuple<JdwpObjId>
+      tuple<JdwpObjId>,
+      tuple<JdwpString>
     > { };
 
 }  // namespace string_reference
@@ -704,98 +817,112 @@ class NameCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kName),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<JdwpString>
     > { };
 
 class SuspendCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kSuspend),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<>
     > { };
 
 class ResumeCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kResume),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<>
     > { };
 
 class StatusCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kStatus),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<JdwpInt, JdwpInt>
     > { };
 
 class ThreadGroupCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kThreadGroup),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<JdwpThreadGroupId>
     > { };
 
 class FramesCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kFrames),
-      tuple<JdwpThreadId, JdwpInt, JdwpInt>
+      tuple<JdwpThreadId, JdwpInt, JdwpInt>,
+      tuple<vector<tuple<JdwpFrameId, JdwpLocation>>>
     > { };
 
 class FrameCountCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kFrameCount),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<JdwpInt>
     > { };
 
 class OwnedMonitorsCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kOwnedMonitors),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<vector<tuple<JdwpTaggedObjectId>>>
     > { };
 
 class CurrentContendedMonitorCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kCurrentContendedMonitor),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<JdwpTaggedObjectId>
     > { };
 
 class StopCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kStop),
-      tuple<JdwpThreadId, JdwpObjId>
+      tuple<JdwpThreadId, JdwpObjId>,
+      tuple<>
     > { };
 
 class InterruptCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kInterrupt),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<>
     > { };
 
 class SuspendCountCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kSuspendCount),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<JdwpInt>
     > { };
 
 class OwnedMonitorsStackDepthInfoCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kOwnedMonitorsStackDepthInfo),
-      tuple<JdwpThreadId>
+      tuple<JdwpThreadId>,
+      tuple<vector<tuple<JdwpTaggedObjectId, JdwpInt>>>
     > { };
 
 class ForceEarlyReturnCommand :
     public CommandPacketBase<
       kThrdRef,
       static_cast<uint8_t>(ThreadReference::kForceEarlyReturn),
-      tuple<JdwpThreadId, JdwpValue>
+      tuple<JdwpThreadId, JdwpValue>,
+      tuple<>
     > { };
 
 }  // namespace thread_reference
@@ -809,13 +936,15 @@ class NameCommand :
     public CommandPacketBase<
       kThrdGrpRef,
       static_cast<uint8_t>(ThreadGroupReference::kName),
-      tuple<JdwpThreadGroupId>
+      tuple<JdwpThreadGroupId>,
+      tuple<JdwpString>
     > { };
 
 class ParentCommand :
     public CommandPacketBase<
       kThrdGrpRef,
       static_cast<uint8_t>(ThreadGroupReference::kParent),
+      tuple<JdwpThreadGroupId>,
       tuple<JdwpThreadGroupId>
     > { };
 
@@ -823,7 +952,8 @@ class ChildrenCommand :
     public CommandPacketBase<
       kThrdGrpRef,
       static_cast<uint8_t>(ThreadGroupReference::kChildren),
-      tuple<JdwpThreadGroupId>
+      tuple<JdwpThreadGroupId>,
+      tuple<vector<tuple<JdwpThreadId>>, vector<tuple<JdwpThreadGroupId>>>
     > { };
 
 }  // namespace thread_group_reference
@@ -836,21 +966,24 @@ class LengthCommand :
     public CommandPacketBase<
       kArrRef,
       static_cast<uint8_t>(ArrayReference::kLength),
-      tuple<JdwpArrayId>
+      tuple<JdwpArrayId>,
+      tuple<JdwpInt>
     > { };
 
 class GetValuesCommand :
     public CommandPacketBase<
       kArrRef,
       static_cast<uint8_t>(ArrayReference::kGetValues),
-      tuple<JdwpArrayId, JdwpInt, JdwpInt>
+      tuple<JdwpArrayId, JdwpInt, JdwpInt>,
+      tuple<JdwpArrayRegion>
     > { };
 
 class SetValuesCommand :
     public CommandPacketBase<
       kArrRef,
       static_cast<uint8_t>(ArrayReference::kSetValues),
-      tuple<JdwpArrayId, JdwpInt, vector<tuple<JdwpValue>>>
+      tuple<JdwpArrayId, JdwpInt, vector<tuple<JdwpValue>>>,
+      tuple<>
     > {
   protected:
     // Need overriden impl to serialize JdwpValues as untagged.
@@ -865,7 +998,8 @@ class VisibleClassesCommand :
     public CommandPacketBase<
       static_cast<uint8_t>(CommandSet::kClassLoaderReference),
       static_cast<uint8_t>(ClassLoaderReference::kVisibleClasses),
-      tuple<JdwpClassLoaderId>
+      tuple<JdwpClassLoaderId>,
+      tuple<vector<tuple<JdwpByte, JdwpReferenceTypeId>>>
     > { };
 
 }  // namespace class_loader_reference
@@ -909,13 +1043,15 @@ class ClearCommand :
     public CommandPacketBase<
       kEvReq,
       static_cast<uint8_t>(EventRequest::kClear),
-      tuple<JdwpByte, JdwpInt>
+      tuple<JdwpByte, JdwpInt>,
+      tuple<>
     > { };
 
 class ClearAllBreakpointsCommand :
     public CommandPacketBase<
       kEvReq,
       static_cast<uint8_t>(EventRequest::kClearAllBreakpoints),
+      tuple<>,
       tuple<>
     > { };
 
@@ -929,28 +1065,32 @@ class GetValuesCommand :
     public CommandPacketBase<
       kStkFrm,
       static_cast<uint8_t>(StackFrame::kGetValues),
-      tuple<JdwpThreadId, JdwpFrameId, vector<tuple<JdwpInt, JdwpByte>>>
+      tuple<JdwpThreadId, JdwpFrameId, vector<tuple<JdwpInt, JdwpByte>>>,
+      tuple<vector<tuple<JdwpValue>>>
     > { };
 
 class SetValuesCommand :
     public CommandPacketBase<
       kStkFrm,
       static_cast<uint8_t>(StackFrame::kSetValues),
-      tuple<JdwpThreadId, JdwpFrameId, vector<tuple<JdwpInt, JdwpValue>>>
+      tuple<JdwpThreadId, JdwpFrameId, vector<tuple<JdwpInt, JdwpValue>>>,
+      tuple<>
     > { };
 
 class ThisObjectCommand :
     public CommandPacketBase<
       kStkFrm,
       static_cast<uint8_t>(StackFrame::kThisObject),
-      tuple<JdwpThreadId, JdwpFrameId>
+      tuple<JdwpThreadId, JdwpFrameId>,
+      tuple<JdwpTaggedObjectId>
     > { };
 
 class PopFramesCommand :
     public CommandPacketBase<
       kStkFrm,
       static_cast<uint8_t>(StackFrame::kPopFrames),
-      tuple<JdwpThreadId, JdwpFrameId>
+      tuple<JdwpThreadId, JdwpFrameId>,
+      tuple<>
     > { };
 
 }  // namespace stack_frame
@@ -961,7 +1101,8 @@ class ReflectedTypeCommand :
     public CommandPacketBase<
       static_cast<uint8_t>(CommandSet::kClassObjectReference),
       static_cast<uint8_t>(ClassObjectReference::kReflectedType),
-      tuple<JdwpClassObjectId>
+      tuple<JdwpClassObjectId>,
+      tuple<JdwpByte, JdwpReferenceTypeId>
     > { };
 
 }  // namespace class_object_reference
